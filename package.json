@@ -1,0 +1,22 @@
+{
+  "name": "pi-choco-chips",
+  "version": "0.1.0",
+  "description": "Small but tasty shortcuts and UX enhancements for pi.",
+  "keywords": ["pi-package"],
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*"
+  },
+  "pi": {
+    "extensions": ["./extensions/index.js"]
+  }
+}

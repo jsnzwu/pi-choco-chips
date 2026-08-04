@@ -1,0 +1,349 @@
+import { randomUUID } from "node:crypto";
+
+import { complete } from "@earendil-works/pi-ai/compat";
+import { CustomEditor } from "@earendil-works/pi-coding-agent";
+import { fuzzyFilter, matchesKey } from "@earendil-works/pi-tui";
+
+import { expandSkillReferences, extractSkillToken } from "./skill-references.js";
+
+const SETTINGS_ENTRY = "pi-choco-chips:settings";
+const MAX_SKILL_SUGGESTIONS = 20;
+const MAX_TITLE_SOURCE_CHARS = 24_000;
+const DEFAULT_FEATURES = {
+  retitle: true,
+  multiSkill: true,
+  autocomplete: true,
+};
+
+function getSkillMap(pi) {
+  const skills = new Map();
+
+  for (const command of pi.getCommands()) {
+    if (command.source !== "skill" || !command.name.startsWith("skill:")) continue;
+
+    const name = command.name.slice("skill:".length);
+    const filePath = command.sourceInfo?.path;
+    if (!name || !filePath) continue;
+
+    skills.set(name, {
+      name,
+      filePath,
+      description: command.description || "",
+    });
+  }
+
+  return skills;
+}
+
+function featureStatus(features) {
+  return [
+    `retitle=${features.retitle ? "on" : "off"}`,
+    `multi-skill=${features.multiSkill ? "on" : "off"}`,
+    `autocomplete=${features.autocomplete ? "on" : "off"}`,
+  ].join(" ");
+}
+
+function notify(ctx, message, type = "info") {
+  if (ctx.hasUI) {
+    ctx.ui.notify(message, type);
+  } else {
+    console.log(message);
+  }
+}
+
+function restoreFeatures(ctx, features) {
+  for (const entry of ctx.sessionManager.getBranch()) {
+    if (entry.type !== "custom" || entry.customType !== SETTINGS_ENTRY) continue;
+    Object.assign(features, entry.data || {});
+  }
+}
+
+function saveFeatures(pi, features) {
+  pi.appendEntry(SETTINGS_ENTRY, { ...features });
+}
+
+function textFromContent(content) {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+
+  return content
+    .filter((part) => part?.type === "text" && typeof part.text === "string")
+    .map((part) => part.text)
+    .join("\n");
+}
+
+function buildConversationText(ctx) {
+  const sections = [];
+
+  for (const entry of ctx.sessionManager.getBranch()) {
+    if (entry.type === "message") {
+      const role = entry.message?.role;
+      if (role !== "user" && role !== "assistant") continue;
+
+      const text = textFromContent(entry.message.content).trim();
+      if (text) sections.push(`${role === "user" ? "User" : "Assistant"}: ${text}`);
+    } else if (entry.type === "compaction" || entry.type === "branch_summary") {
+      if (entry.summary) sections.push(`Summary: ${entry.summary}`);
+    }
+  }
+
+  const text = sections.join("\n\n");
+  if (text.length <= MAX_TITLE_SOURCE_CHARS) return text;
+
+  const head = Math.floor(MAX_TITLE_SOURCE_CHARS / 3);
+  const tail = MAX_TITLE_SOURCE_CHARS - head - 64;
+  return `${text.slice(0, head)}\n\n[earlier context omitted]\n\n${text.slice(-tail)}`;
+}
+
+function cleanTitle(text) {
+  const line = text
+    .split(/\r?\n/)
+    .map((value) => value.trim())
+    .find(Boolean);
+  if (!line) return "";
+
+  const cleaned = line
+    .replace(/^(?:title|session title|标题|会话标题)\s*[:：-]\s*/i, "")
+    .replace(/^[`"“”'‘’]+|[`"“”'‘’]+$/g, "")
+    .replace(/[。！？!?；;，,：:]+$/u, "")
+    .trim();
+
+  return Array.from(cleaned).slice(0, 48).join("");
+}
+
+async function generateTitle(pi, ctx, extraInstruction) {
+  await ctx.waitForIdle();
+
+  const conversation = buildConversationText(ctx);
+  if (!conversation.trim()) {
+    notify(ctx, "No conversation text found", "warning");
+    return;
+  }
+
+  const model = ctx.model;
+  if (!model) {
+    notify(ctx, "No model selected", "warning");
+    return;
+  }
+
+  const auth = await ctx.modelRegistry.getApiKeyAndHeaders(model);
+  if (!auth.ok || !auth.apiKey) {
+    notify(ctx, auth.ok ? `No API key for ${model.provider}` : auth.error, "warning");
+    return;
+  }
+
+  const focus = extraInstruction?.trim()
+    ? `\nAdditional focus: ${extraInstruction.trim()}`
+    : "";
+  const response = await complete(
+    model,
+    {
+      systemPrompt:
+        "Name this coding-agent session from its actual current work. Return one concise title only: 4-16 Chinese characters for Chinese conversations, or 3-8 English words otherwise. Do not use quotes, markdown, labels, or ending punctuation.",
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: `${conversation}${focus}`,
+            },
+          ],
+          timestamp: Date.now(),
+        },
+      ],
+    },
+    {
+      apiKey: auth.apiKey,
+      headers: auth.headers,
+      env: auth.env,
+      maxTokens: 64,
+      cacheRetention: "none",
+      sessionId: randomUUID(),
+    },
+  );
+
+  const title = cleanTitle(
+    response.content
+      .filter((part) => part.type === "text")
+      .map((part) => part.text)
+      .join("\n"),
+  );
+  if (!title) {
+    notify(ctx, "Model returned an empty title", "warning");
+    return;
+  }
+
+  pi.setSessionName(title);
+  notify(ctx, `Session renamed: ${title}`, "info");
+}
+
+function createSkillAutocompleteProvider(current, getSkills, isEnabled) {
+  return {
+    async getSuggestions(lines, cursorLine, cursorCol, options) {
+      const line = lines[cursorLine] || "";
+      const beforeCursor = line.slice(0, cursorCol);
+      const token = extractSkillToken(beforeCursor);
+
+      if (!token || !isEnabled()) {
+        return current.getSuggestions(lines, cursorLine, cursorCol, options);
+      }
+
+      const skills = [...getSkills().values()];
+      const matches = token.query
+        ? fuzzyFilter(skills, token.query, (skill) => `${skill.name} ${skill.description}`)
+        : skills;
+      const items = matches.slice(0, MAX_SKILL_SUGGESTIONS).map((skill) => ({
+        value: `/skill:${skill.name}`,
+        label: `/skill:${skill.name}`,
+        description: skill.description || undefined,
+      }));
+
+      return items.length > 0 ? { items, prefix: token.prefix } : null;
+    },
+
+    applyCompletion(lines, cursorLine, cursorCol, item, prefix) {
+      if (!prefix.startsWith("/skill:")) {
+        return current.applyCompletion(lines, cursorLine, cursorCol, item, prefix);
+      }
+
+      const line = lines[cursorLine] || "";
+      const beforePrefix = line.slice(0, cursorCol - prefix.length);
+      const afterCursor = line.slice(cursorCol);
+      const nextLines = [...lines];
+      nextLines[cursorLine] = `${beforePrefix}${item.value}${afterCursor}`;
+
+      return {
+        lines: nextLines,
+        cursorLine,
+        cursorCol: beforePrefix.length + item.value.length,
+      };
+    },
+
+    shouldTriggerFileCompletion(lines, cursorLine, cursorCol) {
+      return current.shouldTriggerFileCompletion?.(lines, cursorLine, cursorCol) ?? true;
+    },
+  };
+}
+
+function shouldRequerySkillAutocomplete(data) {
+  if (data === "/" || data === ":") return true;
+  if (data.length === 1 && /[a-z0-9-]/i.test(data)) return true;
+
+  return ["backspace", "left", "right", "home", "end"].some((key) => matchesKey(data, key));
+}
+
+class SkillEditor extends CustomEditor {
+  handleInput(data) {
+    super.handleInput(data);
+
+    if (!shouldRequerySkillAutocomplete(data)) return;
+
+    const cursor = this.getCursor();
+    const line = this.getLines()[cursor.line] || "";
+    const beforeCursor = line.slice(0, cursor.col);
+    const token = extractSkillToken(beforeCursor);
+    if (!token || token.start === 0 || this.isShowingAutocomplete()) return;
+
+    this.tryTriggerAutocomplete?.();
+  }
+}
+
+export default function piChocoChips(pi) {
+  const features = { ...DEFAULT_FEATURES };
+
+  pi.registerCommand("retitle", {
+    description: "Generate a new title from the current session",
+    handler: async (args, ctx) => {
+      if (!features.retitle) {
+        notify(ctx, "Retitle is disabled; run /choco retitle on first", "warning");
+        return;
+      }
+
+      try {
+        await generateTitle(pi, ctx, args);
+      } catch (error) {
+        notify(ctx, `Retitle failed: ${error instanceof Error ? error.message : String(error)}`, "error");
+      }
+    },
+  });
+
+  pi.registerCommand("choco", {
+    description: "Show or toggle Pi Choco Chips enhancements",
+    handler: async (args, ctx) => {
+      const parts = args.trim().split(/\s+/).filter(Boolean);
+      const first = parts[0]?.toLowerCase();
+
+      if (!first || first === "status") {
+        notify(ctx, `Pi Choco Chips: ${featureStatus(features)}`);
+        return;
+      }
+
+      const featureNames = {
+        retitle: "retitle",
+        skills: "multiSkill",
+        "multi-skill": "multiSkill",
+        autocomplete: "autocomplete",
+      };
+
+      if (first === "on" || first === "off") {
+        const enabled = first === "on";
+        Object.keys(features).forEach((key) => {
+          features[key] = enabled;
+        });
+      } else {
+        const feature = featureNames[first];
+        const value = parts[1]?.toLowerCase();
+        if (!feature || (value !== "on" && value !== "off")) {
+          notify(
+            ctx,
+            "Usage: /choco [status|on|off|retitle on|skills on|autocomplete on]",
+            "warning",
+          );
+          return;
+        }
+        features[feature] = value === "on";
+      }
+
+      saveFeatures(pi, features);
+      notify(ctx, `Pi Choco Chips: ${featureStatus(features)}`);
+    },
+  });
+
+  pi.on("session_start", async (_event, ctx) => {
+    restoreFeatures(ctx, features);
+
+    if (ctx.mode === "tui") {
+      ctx.ui.addAutocompleteProvider((current) =>
+        createSkillAutocompleteProvider(
+          current,
+          () => getSkillMap(pi),
+          () => features.autocomplete,
+        ),
+      );
+      ctx.ui.setEditorComponent((tui, theme, keybindings) =>
+        new SkillEditor(tui, theme, keybindings),
+      );
+    }
+  });
+
+  pi.on("input", (event, ctx) => {
+    if (event.source === "extension" || !features.multiSkill) {
+      return { action: "continue" };
+    }
+
+    const expanded = expandSkillReferences(event.text, getSkillMap(pi), {
+      onError: (skill, error) => {
+        notify(
+          ctx,
+          `Could not load /skill:${skill.name}: ${error instanceof Error ? error.message : String(error)}`,
+          "warning",
+        );
+      },
+    });
+
+    return expanded === event.text
+      ? { action: "continue" }
+      : { action: "transform", text: expanded };
+  });
+}
