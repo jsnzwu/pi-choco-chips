@@ -31,6 +31,8 @@ The settings are stored as session entries, so a toggle survives `/reload` and f
 
 ## Install locally
 
+From the repository root:
+
 ```bash
 pi install .
 ```
