@@ -35,11 +35,14 @@ function getSkillMap(pi) {
   return skills;
 }
 
-function featureStatus(features) {
+function featureStatus(features, pi, ctx) {
+  const editor = ctx?.ui.getEditorComponent?.() ? "custom" : "default";
   return [
     `retitle=${features.retitle ? "on" : "off"}`,
     `multi-skill=${features.multiSkill ? "on" : "off"}`,
     `autocomplete=${features.autocomplete ? "on" : "off"}`,
+    `skills=${pi ? getSkillMap(pi).size : 0}`,
+    `editor=${editor}`,
   ].join(" ");
 }
 
@@ -180,6 +183,8 @@ async function generateTitle(pi, ctx, extraInstruction) {
 
 function createSkillAutocompleteProvider(current, getSkills, isEnabled) {
   return {
+    triggerCharacters: [...new Set([...(current.triggerCharacters || []), "$"])],
+
     async getSuggestions(lines, cursorLine, cursorCol, options) {
       const line = lines[cursorLine] || "";
       const beforeCursor = line.slice(0, cursorCol);
@@ -193,17 +198,20 @@ function createSkillAutocompleteProvider(current, getSkills, isEnabled) {
       const matches = token.query
         ? fuzzyFilter(skills, token.query, (skill) => `${skill.name} ${skill.description}`)
         : skills;
-      const items = matches.slice(0, MAX_SKILL_SUGGESTIONS).map((skill) => ({
-        value: `/skill:${skill.name}`,
-        label: `/skill:${skill.name}`,
-        description: skill.description || undefined,
-      }));
+      const items = matches.slice(0, MAX_SKILL_SUGGESTIONS).map((skill) => {
+        const value = token.marker === "$" ? `$${skill.name}` : `/skill:${skill.name}`;
+        return {
+          value,
+          label: value,
+          description: skill.description || undefined,
+        };
+      });
 
       return items.length > 0 ? { items, prefix: token.prefix } : null;
     },
 
     applyCompletion(lines, cursorLine, cursorCol, item, prefix) {
-      if (!prefix.startsWith("/skill:")) {
+      if (!prefix.startsWith("/skill:") && !prefix.startsWith("$")) {
         return current.applyCompletion(lines, cursorLine, cursorCol, item, prefix);
       }
 
@@ -227,30 +235,38 @@ function createSkillAutocompleteProvider(current, getSkills, isEnabled) {
 }
 
 function shouldRequerySkillAutocomplete(data) {
-  if (data === "/" || data === ":") return true;
+  if (data === "/" || data === ":" || data === "$") return true;
   if (data.length === 1 && /[a-z0-9-]/i.test(data)) return true;
 
   return ["backspace", "left", "right", "home", "end"].some((key) => matchesKey(data, key));
 }
 
 class SkillEditor extends CustomEditor {
+  triggerSkillAutocomplete() {
+    const cursor = this.getCursor();
+    const line = this.getLines()[cursor.line] || "";
+    const token = extractSkillToken(line.slice(0, cursor.col));
+    if (!token || this.isShowingAutocomplete()) return;
+
+    this.tryTriggerAutocomplete?.();
+  }
+
   handleInput(data) {
     super.handleInput(data);
 
     if (!shouldRequerySkillAutocomplete(data)) return;
+    this.triggerSkillAutocomplete();
+  }
 
-    const cursor = this.getCursor();
-    const line = this.getLines()[cursor.line] || "";
-    const beforeCursor = line.slice(0, cursor.col);
-    const token = extractSkillToken(beforeCursor);
-    if (!token || token.start === 0 || this.isShowingAutocomplete()) return;
-
-    this.tryTriggerAutocomplete?.();
+  handlePaste(text) {
+    super.handlePaste(text);
+    this.triggerSkillAutocomplete();
   }
 }
 
 export default function piChocoChips(pi) {
   const features = { ...DEFAULT_FEATURES };
+  let editorFactory;
 
   pi.registerCommand("retitle", {
     description: "Generate a new title from the current session",
@@ -275,7 +291,7 @@ export default function piChocoChips(pi) {
       const first = parts[0]?.toLowerCase();
 
       if (!first || first === "status") {
-        notify(ctx, `Pi Choco Chips: ${featureStatus(features)}`);
+        notify(ctx, `Pi Choco Chips: ${featureStatus(features, pi, ctx)}`);
         return;
       }
 
@@ -306,7 +322,7 @@ export default function piChocoChips(pi) {
       }
 
       saveFeatures(pi, features);
-      notify(ctx, `Pi Choco Chips: ${featureStatus(features)}`);
+      notify(ctx, `Pi Choco Chips: ${featureStatus(features, pi, ctx)}`);
     },
   });
 
@@ -321,10 +337,16 @@ export default function piChocoChips(pi) {
           () => features.autocomplete,
         ),
       );
-      ctx.ui.setEditorComponent((tui, theme, keybindings) =>
-        new SkillEditor(tui, theme, keybindings),
-      );
+      editorFactory = (tui, theme, keybindings) => new SkillEditor(tui, theme, keybindings);
+      ctx.ui.setEditorComponent(editorFactory);
     }
+  });
+
+  pi.on("session_shutdown", (_event, ctx) => {
+    if (ctx.mode === "tui" && editorFactory && ctx.ui.getEditorComponent?.() === editorFactory) {
+      ctx.ui.setEditorComponent(undefined);
+    }
+    editorFactory = undefined;
   });
 
   pi.on("input", (event, ctx) => {

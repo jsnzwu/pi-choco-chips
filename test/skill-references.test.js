@@ -49,9 +49,9 @@ test("builds the same skill block shape pi understands", () => {
   );
 });
 
-test("expands multiple skill references anywhere in a prompt", () => {
+test("expands both skill syntaxes anywhere in a prompt", () => {
   const result = expandSkillReferences(
-    "结合 /skill:alpha 和（/skill:beta-tools）完成任务。",
+    "结合 /skill:alpha 和（$beta-tools）完成任务。",
     skills,
     { readSkill },
   );
@@ -61,21 +61,36 @@ test("expands multiple skill references anywhere in a prompt", () => {
   assert.match(result, /完成任务/);
 });
 
-test("leaves unknown references untouched", () => {
-  const input = "Use /skill:missing and /skill:alpha.";
+test("leaves unknown references and shell variables untouched", () => {
+  const input = "Use /skill:missing, $HOME, and $alpha.";
   const result = expandSkillReferences(input, skills, { readSkill });
 
   assert.match(result, /\/skill:missing/);
+  assert.match(result, /\$HOME/);
   assert.match(result, /<skill name="alpha"/);
 });
 
 test("extracts the skill token at the cursor", () => {
   assert.deepEqual(extractSkillToken("请使用 /skill:alp"), {
+    marker: "/skill:",
     query: "alp",
     prefix: "/skill:alp",
     start: 4,
   });
+  assert.deepEqual(extractSkillToken("$"), {
+    marker: "$",
+    query: "",
+    prefix: "$",
+    start: 0,
+  });
+  assert.deepEqual(extractSkillToken("$beta"), {
+    marker: "$",
+    query: "beta",
+    prefix: "$beta",
+    start: 0,
+  });
   assert.deepEqual(extractSkillToken("/skill:"), {
+    marker: "/skill:",
     query: "",
     prefix: "/skill:",
     start: 0,

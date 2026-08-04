@@ -5,15 +5,19 @@ Small but tasty shortcuts and user-experience enhancements for [pi](https://pi.d
 ## Features
 
 - `/retitle` — generate a concise title from the current session.
-- Multiple `/skill:name` references in one prompt.
-- Skill completion after `/skill:` anywhere in the current prompt.
+- Multiple `/skill:name` or `$skill-name` references in one prompt.
+- Skill completion after `/skill:` or `$` anywhere in the current prompt.
 - `/choco` — inspect or toggle the enhancements for the current session.
 
-## Commands
+## Commands and skill references
+
+`/command` selects a Pi command. `$skill-name` selects a skill without looking like a command; `/skill:name` remains supported as the explicit form.
 
 ```text
 /retitle
 /retitle focus on the current implementation
+
+Use $git-comment-gen and /skill:ponytail in the same prompt.
 
 /choco status
 /choco on
