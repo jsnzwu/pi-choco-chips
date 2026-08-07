@@ -4,9 +4,10 @@ import { complete } from "@earendil-works/pi-ai/compat";
 import { CustomEditor } from "@earendil-works/pi-coding-agent";
 import { fuzzyFilter, matchesKey } from "@earendil-works/pi-tui";
 
-import { expandSkillReferences, extractSkillToken } from "./skill-references.js";
+import { extractSkillToken, makeSkillBundle } from "./skill-references.js";
 
 const SETTINGS_ENTRY = "pi-choco-chips:settings";
+const SKILL_BUNDLE_TYPE = "pi-choco-chips.skill-bundle";
 const MAX_SKILL_SUGGESTIONS = 20;
 const MAX_TITLE_SOURCE_CHARS = 24_000;
 const DEFAULT_FEATURES = {
@@ -266,6 +267,7 @@ class SkillEditor extends CustomEditor {
 
 export default function piChocoChips(pi) {
   const features = { ...DEFAULT_FEATURES };
+  const pendingBundleTimers = new Set();
   let editorFactory;
 
   pi.registerCommand("retitle", {
@@ -343,6 +345,9 @@ export default function piChocoChips(pi) {
   });
 
   pi.on("session_shutdown", (_event, ctx) => {
+    for (const timer of pendingBundleTimers) clearTimeout(timer);
+    pendingBundleTimers.clear();
+
     if (ctx.mode === "tui" && editorFactory && ctx.ui.getEditorComponent?.() === editorFactory) {
       ctx.ui.setEditorComponent(undefined);
     }
@@ -354,7 +359,7 @@ export default function piChocoChips(pi) {
       return { action: "continue" };
     }
 
-    const expanded = expandSkillReferences(event.text, getSkillMap(pi), {
+    const bundle = makeSkillBundle(event.text, getSkillMap(pi), {
       onError: (skill, error) => {
         notify(
           ctx,
@@ -364,8 +369,24 @@ export default function piChocoChips(pi) {
       },
     });
 
-    return expanded === event.text
-      ? { action: "continue" }
-      : { action: "transform", text: expanded };
+    if (!bundle) return { action: "continue" };
+
+    const timer = setTimeout(() => {
+      pendingBundleTimers.delete(timer);
+      pi.sendMessage(
+        {
+          customType: SKILL_BUNDLE_TYPE,
+          content: [...bundle.content, ...(event.images || [])],
+          display: true,
+          details: bundle.details,
+        },
+        event.streamingBehavior
+          ? { triggerTurn: true, deliverAs: event.streamingBehavior }
+          : { triggerTurn: true },
+      );
+    }, 0);
+    pendingBundleTimers.add(timer);
+
+    return { action: "handled" };
   });
 }
