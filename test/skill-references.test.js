@@ -2,9 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
-  expandSkillReferences,
   extractSkillToken,
   makeSkillBlock,
+  makeSkillBundle,
   stripFrontmatter,
 } from "../extensions/skill-references.js";
 
@@ -49,25 +49,74 @@ test("builds the same skill block shape pi understands", () => {
   );
 });
 
-test("expands both skill syntaxes anywhere in a prompt", () => {
-  const result = expandSkillReferences(
-    "结合 /skill:alpha 和（$beta-tools）完成任务。",
-    skills,
-    { readSkill },
-  );
+test("builds one ordered bundle with complete blocks and ordinary text", () => {
+  const result = makeSkillBundle("Use /skill:alpha and $beta-tools now", skills, { readSkill });
 
-  assert.match(result, /<skill name="alpha"/);
-  assert.match(result, /<skill name="beta-tools"/);
-  assert.match(result, /完成任务/);
+  assert.ok(result);
+  assert.equal(result.content.length, 3);
+  assert.match(result.content[0].text, /<skill name="alpha"/);
+  assert.match(result.content[1].text, /<skill name="beta-tools"/);
+  assert.equal(result.content[2].text, "Use and now");
+  assert.deepEqual(result.details.skills, [
+    { name: "alpha", location: "/tmp/alpha/SKILL.md", status: "loaded", contentIndex: 0 },
+    { name: "beta-tools", location: "/tmp/beta-tools/SKILL.md", status: "loaded", contentIndex: 1 },
+  ]);
+  assert.equal(result.details.userContentIndex, 2);
 });
 
-test("leaves unknown references and shell variables untouched", () => {
-  const input = "Use /skill:missing, $HOME, and $alpha.";
-  const result = expandSkillReferences(input, skills, { readSkill });
+test("preserves ordinary words after skill removal", () => {
+  const result = makeSkillBundle("Use /skill:alpha tools", skills, { readSkill });
 
-  assert.match(result, /\/skill:missing/);
-  assert.match(result, /\$HOME/);
-  assert.match(result, /<skill name="alpha"/);
+  assert.ok(result);
+  assert.equal(result.content[result.details.userContentIndex].text, "Use tools");
+});
+
+test("preserves tabs outside the skill-removal seam", () => {
+  const result = makeSkillBundle("Use /skill:alpha\ttools\n\t\tcode", skills, { readSkill });
+
+  assert.ok(result);
+  assert.equal(result.content[result.details.userContentIndex].text, "Use\ttools\n\t\tcode");
+});
+
+test("removes the separator after a line-start skill reference", () => {
+  const result = makeSkillBundle("Before\n/skill:alpha next", skills, { readSkill });
+
+  assert.ok(result);
+  assert.equal(result.content[result.details.userContentIndex].text, "Before\nnext");
+});
+
+test("preserves duplicate and unknown references in a bundle", () => {
+  const result = makeSkillBundle("/skill:alpha /skill:missing $alpha $HOME", skills, { readSkill });
+
+  assert.ok(result);
+  assert.equal(result.details.skills.length, 2);
+  assert.equal(result.details.skills[0].name, "alpha");
+  assert.equal(result.details.skills[1].name, "alpha");
+  assert.equal(result.content.filter((part) => part.text?.includes('<skill name="alpha"')).length, 2);
+  assert.match(result.content[result.details.userContentIndex].text, /\/skill:missing/);
+  assert.match(result.content[result.details.userContentIndex].text, /\$HOME/);
+});
+
+test("records read failures and keeps the failed reference in ordinary text", () => {
+  const errors = [];
+  const result = makeSkillBundle("Use /skill:alpha now", skills, {
+    readSkill: () => {
+      throw new Error("EACCES");
+    },
+    onError: (_skill, error) => errors.push(error.message),
+  });
+
+  assert.ok(result);
+  assert.deepEqual(errors, ["EACCES"]);
+  assert.deepEqual(result.details.skills, [
+    { name: "alpha", location: "/tmp/alpha/SKILL.md", status: "error", error: "EACCES" },
+  ]);
+  assert.equal(result.content.length, 1);
+  assert.equal(result.content[0].text, "Use /skill:alpha now");
+});
+
+test("does not build a bundle when no known skill is referenced", () => {
+  assert.equal(makeSkillBundle("Use /skill:missing and $HOME", skills, { readSkill }), null);
 });
 
 test("extracts the skill token at the cursor", () => {
