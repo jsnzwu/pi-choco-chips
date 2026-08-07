@@ -1,0 +1,124 @@
+{
+  "version": 1,
+  "dashboard": {
+    "version": 1,
+    "enabled": true,
+    "title": {
+      "autoGenerate": true,
+      "strategy": "model-summary",
+      "maxChars": 32,
+      "maxSourceChars": 6000,
+      "maxOutputTokens": 128,
+      "reasoningEffort": "low",
+      "replaceLegacyGeneratedTitle": true,
+      "fallbackToProject": true,
+      "prompt": "Generate a concise semantic title for this coding-agent session. Reflect the primary task and current direction, not the wording of the first message. Use 4-16 Chinese characters for Chinese conversations or 3-8 words otherwise. Output only the title without quotes, markdown, labels, or ending punctuation."
+    },
+    "header": {
+      "enabled": true,
+      "mode": "detailed",
+      "showVersion": true,
+      "showProject": true,
+      "showTitle": true,
+      "showGit": true,
+      "showModel": true,
+      "showDisplayHints": true
+    },
+    "footer": {
+      "enabled": true,
+      "refreshIntervalMs": 1000,
+      "wrapToPreserveFields": true,
+      "showProjectName": true,
+      "showFullCwd": true,
+      "showGeneratedTitle": true,
+      "showGitWorktree": true,
+      "showTurnNumber": true,
+      "showProviderAndModel": true,
+      "showThinkingLevel": true,
+      "showContextUsage": true,
+      "showRuntimePhase": false,
+      "showResponseUsage": false,
+      "showTurnUsage": false,
+      "showSessionUsage": true,
+      "showCacheUsage": true,
+      "showCost": true,
+      "showClock": false,
+      "showExtensionStatuses": true
+    },
+    "transcript": {
+      "persistMetadata": true,
+      "compactSameTurnSpacing": true,
+      "turnSeparator": "line",
+      "timestamps": {
+        "absolute": true,
+        "includeDate": true,
+        "milliseconds": false,
+        "relative": true,
+        "timeZone": "local"
+      },
+      "roles": {
+        "user": "YOU",
+        "assistant": "PI",
+        "tool": "TOOL",
+        "system": "SYSTEM",
+        "turn": "TURN"
+      },
+      "thinking": {
+        "collapsedByDefault": true,
+        "hiddenLabel": "",
+        "showDurationInAssistantMetadata": true,
+        "compactSummary": true,
+        "summaryLabel": "THINK",
+        "summarySeparator": " › ",
+        "showLineDuration": true,
+        "maxSummaryChars": 1200
+      },
+      "usage": {
+        "response": true,
+        "turn": true,
+        "session": true,
+        "input": true,
+        "output": true,
+        "reasoning": true,
+        "cacheRead": true,
+        "cacheWrite": true,
+        "cost": true
+      },
+      "systemEvents": {
+        "errorsAndRetries": true,
+        "compactionAndContext": true,
+        "modelAndSession": true,
+        "extensionsAndSecurity": true
+      }
+    },
+    "working": {
+      "enabled": true,
+      "showPhase": true,
+      "showElapsed": true,
+      "refreshIntervalMs": 1000,
+      "indicator": "dot"
+    },
+    "git": {
+      "enabled": true,
+      "showBranch": true,
+      "showDirty": true,
+      "showAheadBehind": true,
+      "showStagedCount": true,
+      "showModifiedCount": true,
+      "showUntrackedCount": true,
+      "refreshAfterTools": true,
+      "refreshAfterTurn": true
+    },
+    "tools": {
+      "persistTimings": true,
+      "showErrorRecordWhenCollapsed": true,
+      "maxErrorChars": 4000
+    },
+    "controls": {
+      "registerCommands": false,
+      "registerShortcuts": false,
+      "watchConfig": false,
+      "reloadRequiredAfterConfigChange": true
+    }
+  }
+}
