@@ -5,6 +5,12 @@
   "keywords": ["pi-package"],
   "license": "MIT",
   "type": "module",
+  "files": [
+    "extensions",
+    "pi-choco-setting.json",
+    "README.md",
+    "LICENSE"
+  ],
   "engines": {
     "node": ">=20"
   },
@@ -17,6 +23,9 @@
     "@earendil-works/pi-tui": "*"
   },
   "pi": {
-    "extensions": ["./extensions/index.js"]
+    "extensions": [
+      "./extensions/index.js",
+      "./extensions/dashboard.js"
+    ]
   }
 }
