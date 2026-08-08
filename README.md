@@ -5,6 +5,7 @@ Post-start enhancements for [pi](https://pi.dev), packaged as ordinary Pi extens
 ## Features
 
 - Integrated dashboard with session title, project/model header, usage footer, Git status, turn metadata, thinking summaries, tool timings, and system-event records.
+- `/dashboard` — open a TUI settings page that toggles footer lines 2 and 3 and persists the choice.
 - Compact transcript spacing and Bash command styling with runtime Pi capability detection. Unsupported internals disable only the affected feature and emit a warning.
 - `/retitle` — generate a concise title from the current session.
 - Multiple `/skill:name` or `$skill-name` references in one prompt, delivered as one ordered custom message.
@@ -28,6 +29,10 @@ or place the file under `PI_CODING_AGENT_DIR` when that environment variable is 
   "version": 1,
   "dashboard": {
     "enabled": true,
+    "footer": {
+      "line2Visible": true,
+      "line3Visible": true
+    },
     "transcript": {
       "compactSameTurnSpacing": true
     }
@@ -46,6 +51,8 @@ User settings are deep-merged over the bundled defaults. Restart Pi after changi
 /retitle focus on the current implementation
 
 Use $git-comment-gen and /skill:ponytail in the same prompt.
+
+/dashboard
 
 /choco status
 /choco on

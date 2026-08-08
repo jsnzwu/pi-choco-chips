@@ -6,11 +6,15 @@ import piChocoDashboard from "../extensions/dashboard.js";
 
 function createDashboardHarness() {
   const handlers = new Map();
+  const commands = new Map();
   const messageRenderers = new Map();
   const entryRenderers = new Map();
   const pi = {
     on(event, handler) {
       handlers.set(event, handler);
+    },
+    registerCommand(name, command) {
+      commands.set(name, command);
     },
     registerMessageRenderer(type, renderer) {
       messageRenderers.set(type, renderer);
@@ -21,7 +25,7 @@ function createDashboardHarness() {
   };
 
   piChocoDashboard(pi);
-  return { handlers, messageRenderers, entryRenderers };
+  return { handlers, commands, messageRenderers, entryRenderers };
 }
 
 test("package loads the shortcut and dashboard extensions", () => {
@@ -38,12 +42,16 @@ test("bundled settings contain the dashboard section", () => {
   );
   assert.equal(settings.version, 1);
   assert.equal(settings.dashboard.enabled, true);
+  assert.equal(settings.dashboard.footer.line2Visible, true);
+  assert.equal(settings.dashboard.footer.line3Visible, true);
+  assert.equal(settings.dashboard.controls.registerCommands, true);
   assert.equal(settings.dashboard.transcript.compactSameTurnSpacing, true);
 });
 
 test("dashboard registers its renderers and lifecycle handlers", () => {
   const harness = createDashboardHarness();
 
+  assert.equal(harness.commands.has("dashboard"), true);
   assert.equal(harness.messageRenderers.has("pi-choco-chips.skill-bundle"), true);
   assert.equal(harness.entryRenderers.has("pi-choco-chips.dashboard.meta"), true);
   for (const event of [

@@ -2,6 +2,7 @@ import { complete } from "@earendil-works/pi-ai/compat";
 import {
   CustomEditor,
   getMarkdownTheme,
+  getSettingsListTheme,
   parseSkillBlock,
   SkillInvocationMessageComponent,
   UserMessageComponent,
@@ -11,15 +12,16 @@ import {
   Box,
   Container,
   matchesKey,
+  SettingsList,
   Spacer,
   Text,
   truncateToWidth,
   visibleWidth,
   wrapTextWithAnsi
 } from "@earendil-works/pi-tui";
-import { existsSync, readFileSync, realpathSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import { basename, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 const META_TYPE = "pi-choco-chips.dashboard.meta";
@@ -64,6 +66,8 @@ const DEFAULT_CONFIG = {
     enabled: true,
     refreshIntervalMs: 1e3,
     wrapToPreserveFields: true,
+    line2Visible: true,
+    line3Visible: true,
     showProjectName: true,
     showFullCwd: true,
     showGeneratedTitle: true,
@@ -145,7 +149,7 @@ const DEFAULT_CONFIG = {
     maxErrorChars: 4e3
   },
   controls: {
-    registerCommands: false,
+    registerCommands: true,
     registerShortcuts: false,
     watchConfig: false,
     reloadRequiredAfterConfigChange: true
@@ -198,6 +202,21 @@ function loadConfig() {
     }
   }
   return errors.length ? { config, error: errors.join("; ") } : { config };
+}
+function writeDashboardConfig(config) {
+  const path = join(agentDir(), CONFIG_FILE);
+  let root = { version: 1 };
+  if (existsSync(path)) {
+    const parsed = JSON.parse(readFileSync(path, "utf8"));
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new Error("root setting must be an object");
+    }
+    root = parsed;
+  }
+  if (root.version === void 0) root.version = 1;
+  root.dashboard = config;
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, `${JSON.stringify(root, null, 2)}\n`, "utf8");
 }
 function cloneUsage() {
   return { ...EMPTY_USAGE };
@@ -1303,7 +1322,11 @@ function piChocoDashboard(pi) {
             const statuses = [...footerData.getExtensionStatuses().values()].filter(Boolean);
             if (statuses.length) line4.push(...statuses);
           }
-          return [line1, line2, line3, line4].filter((parts) => parts.length > 0).flatMap((parts) => wrapTextWithAnsi(parts.join(divider), Math.max(1, width)));
+          const visibleLines = [line1];
+          if (config.footer.line2Visible) visibleLines.push(line2);
+          if (config.footer.line3Visible) visibleLines.push(line3);
+          visibleLines.push(line4);
+          return visibleLines.filter((parts) => parts.length > 0).flatMap((parts) => wrapTextWithAnsi(parts.join(divider), Math.max(1, width)));
         },
         dispose() {
           unsubscribe();
@@ -1313,6 +1336,60 @@ function piChocoDashboard(pi) {
       };
     });
   };
+  pi.registerCommand("dashboard", {
+    description: "Configure Pi Choco Chips dashboard visibility",
+    handler: async (_args, ctx) => {
+      if (ctx.mode !== "tui") {
+        const message = "The dashboard settings UI is available only in TUI mode";
+        if (ctx.hasUI) ctx.ui.notify(message, "warning");
+        else console.warn(`Warning: ${message}`);
+        return;
+      }
+      await ctx.ui.custom((_tui, theme, _keybindings, done) => {
+        const container = new Container();
+        container.addChild(new Text(theme.fg("accent", theme.bold("Dashboard footer")), 1, 1));
+        const settingsList = new SettingsList(
+          [
+            {
+              id: "footer-line-2",
+              label: "Footer line 2",
+              currentValue: config.footer.line2Visible ? "visible" : "hidden",
+              values: ["visible", "hidden"]
+            },
+            {
+              id: "footer-line-3",
+              label: "Footer line 3",
+              currentValue: config.footer.line3Visible ? "visible" : "hidden",
+              values: ["visible", "hidden"]
+            }
+          ],
+          4,
+          getSettingsListTheme(),
+          (id, newValue) => {
+            const key = id === "footer-line-2" ? "line2Visible" : "line3Visible";
+            const previous = config.footer[key];
+            config.footer[key] = newValue === "visible";
+            try {
+              writeDashboardConfig(config);
+              requestUiRender();
+            } catch (error) {
+              config.footer[key] = previous;
+              const message = error instanceof Error ? error.message : String(error);
+              ctx.ui.notify(`Could not save dashboard settings: ${message}`, "error");
+            }
+          },
+          () => done(void 0),
+          { enableSearch: false }
+        );
+        container.addChild(settingsList);
+        return {
+          render: (width) => container.render(width),
+          invalidate: () => container.invalidate(),
+          handleInput: (data) => settingsList.handleInput?.(data)
+        };
+      });
+    }
+  });
   pi.registerMessageRenderer(
     SKILL_BUNDLE_TYPE,
     (message, { expanded, outputPad }, theme) => renderSkillBundle(message, expanded, outputPad, theme)
