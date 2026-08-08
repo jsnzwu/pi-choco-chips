@@ -28,6 +28,8 @@
       "enabled": true,
       "refreshIntervalMs": 1000,
       "wrapToPreserveFields": true,
+      "line2Visible": true,
+      "line3Visible": true,
       "showProjectName": true,
       "showFullCwd": true,
       "showGeneratedTitle": true,
@@ -115,7 +117,7 @@
       "maxErrorChars": 4000
     },
     "controls": {
-      "registerCommands": false,
+      "registerCommands": true,
       "registerShortcuts": false,
       "watchConfig": false,
       "reloadRequiredAfterConfigChange": true
