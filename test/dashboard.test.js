@@ -43,9 +43,20 @@ test("bundled settings contain the dashboard section", () => {
   assert.equal(settings.version, 1);
   assert.equal(settings.dashboard.enabled, true);
   assert.equal(settings.dashboard.footer.line2Visible, true);
-  assert.equal(settings.dashboard.footer.line3Visible, true);
+  assert.equal(settings.dashboard.footer.line3Visible, false);
   assert.equal(settings.dashboard.controls.registerCommands, true);
   assert.equal(settings.dashboard.transcript.compactSameTurnSpacing, true);
+});
+
+test("dashboard source keeps compact footer hierarchy and multiline statuses", () => {
+  const source = readFileSync(new URL("../extensions/dashboard.ts", import.meta.url), "utf8");
+  assert.match(source, /line3Visible: false/);
+  assert.match(source, /` \(\$\{formatTokens\(context\.contextWindow\)\}\)`/);
+  assert.match(source, /line1\.push\(theme\.fg\("muted", formatDuration\(currentSessionMs\(\)\)\)\)/);
+  assert.match(source, /\)}K`/);
+  assert.doesNotMatch(source, /"work "/);
+  assert.match(source, /status\.split\(\/\\r\?\\n\//);
+  assert.match(source, /return \[\.\.\.dashboardRows, \.\.\.statusRows\]/);
 });
 
 test("dashboard registers its renderers and lifecycle handlers", () => {

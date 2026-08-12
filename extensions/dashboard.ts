@@ -68,7 +68,7 @@ const DEFAULT_CONFIG = {
     refreshIntervalMs: 1e3,
     wrapToPreserveFields: true,
     line2Visible: true,
-    line3Visible: true,
+    line3Visible: false,
     showProjectName: true,
     showFullCwd: true,
     showGeneratedTitle: true,
@@ -305,8 +305,8 @@ function formatRelative(ms) {
 function formatTokens(value) {
   const abs = Math.abs(value);
   if (abs < 1e3) return String(Math.round(value));
-  if (abs < 1e6) return `${(value / 1e3).toFixed(abs < 1e4 ? 1 : 0)}k`;
-  return `${(value / 1e6).toFixed(abs < 1e7 ? 2 : 1)}m`;
+  if (abs < 1e6) return `${(value / 1e3).toFixed(abs < 1e4 ? 1 : 0)}K`;
+  return `${(value / 1e6).toFixed(abs < 1e7 ? 2 : 1)}M`;
 }
 function formatCost(value) {
   return `$${value.toFixed(1)}`;
@@ -922,6 +922,7 @@ function piChocoDashboard(pi: ExtensionAPI) {
   let lastResponse;
   let lastTurn;
   let sessionUsage = cloneUsage();
+  let sessionStartedMono = performance.now();
   let foregroundWorkMs = 0;
   let foregroundWorkStartedMono;
   let gitState = {
@@ -942,6 +943,7 @@ function piChocoDashboard(pi: ExtensionAPI) {
     footerRender();
     headerRender();
   };
+  const currentSessionMs = () => Math.max(0, performance.now() - sessionStartedMono);
   const currentForegroundWorkMs = () => foregroundWorkMs + (foregroundWorkStartedMono === void 0 ? 0 : Math.max(0, performance.now() - foregroundWorkStartedMono));
   const startForegroundWork = () => {
     foregroundWorkStartedMono ??= performance.now();
@@ -1145,6 +1147,7 @@ function piChocoDashboard(pi: ExtensionAPI) {
   };
   const restoreState = (ctx) => {
     currentTurn = 0;
+    sessionStartedMono = performance.now();
     lastResponse = void 0;
     lastTurn = void 0;
     foregroundWorkMs = 0;
@@ -1267,7 +1270,11 @@ function piChocoDashboard(pi: ExtensionAPI) {
             const thinking = config.footer.showThinkingLevel ? `${thinkingColor(theme.bold(`(${currentThinking})`))} ` : "";
             line1.push(`${thinking}${modelText}`);
           }
-          if (contextPercent !== void 0) line1.push(theme.fg("muted", contextPercent));
+          if (contextPercent !== void 0) {
+            const windowText = context ? ` (${formatTokens(context.contextWindow)})` : "";
+            line1.push(theme.fg("muted", `${contextPercent}${windowText}`));
+          }
+          line1.push(theme.fg("muted", formatDuration(currentSessionMs())));
           const modelUsageParts = [];
           if (config.footer.showResponseUsage) modelUsageParts.push(footerUsageText("RESP", lastResponse?.usage, theme));
           if (config.footer.showTurnUsage) modelUsageParts.push(footerUsageText("TURN", request?.usage || lastTurn?.usage, theme));
@@ -1282,7 +1289,6 @@ function piChocoDashboard(pi: ExtensionAPI) {
           } else if (config.footer.showTurnNumber) {
             modelUsageParts.push(`${theme.fg("muted", "turn ")}${theme.fg("muted", String(currentTurn))}`);
           }
-          const workText = `${theme.fg("dim", "work ")}${theme.fg("muted", formatDuration(currentForegroundWorkMs()))}`;
           if (relaxed) {
             if (config.footer.showProjectName) {
               line2.push(`${theme.fg("dim", "\u{1F4C1}")} ${theme.fg("syntaxString", theme.bold(basename(ctx.cwd)))}`);
@@ -1293,13 +1299,9 @@ function piChocoDashboard(pi: ExtensionAPI) {
             if (config.footer.showGitWorktree) {
               line2.push(`${theme.fg("dim", "git ")}${styledGitText(gitState, config, theme, true)}`);
             }
-            if (context) {
-              line3.push(`${theme.fg("dim", "ctx ")}${theme.fg("muted", formatTokens(context.contextWindow))}`);
-            }
             if (modelUsageParts.length) {
               line3.push(`${theme.fg("dim", "usage ")}${modelUsageParts.join(" ")}`);
             }
-            line3.push(workText);
           } else {
             if (config.footer.showProjectName) {
               line2.push(theme.fg("syntaxString", theme.bold(basename(ctx.cwd))));
@@ -1308,26 +1310,29 @@ function piChocoDashboard(pi: ExtensionAPI) {
             if (config.footer.showGitWorktree) {
               line2.push(`${theme.fg("dim", "git ")}${styledGitText(gitState, config, theme, true)}`);
             }
-            const contextAndUsage = [];
-            if (context) contextAndUsage.push(theme.fg("muted", formatTokens(context.contextWindow)));
-            if (modelUsageParts.length) contextAndUsage.push(modelUsageParts.join(" "));
-            contextAndUsage.push(workText);
-            line3.push(contextAndUsage.join(" "));
+            if (modelUsageParts.length) line3.push(modelUsageParts.join(" "));
           }
           if (config.footer.showRuntimePhase) {
             const elapsed = phase === "Ready" ? "" : ` ${formatDuration(performance.now() - phaseStartedMono)}`;
             line4.push(`${phase}${elapsed}`);
           }
           if (config.footer.showClock) line4.push(formatAbsolute(Date.now(), config));
+          const extensionRows = [];
           if (config.footer.showExtensionStatuses) {
-            const statuses = [...footerData.getExtensionStatuses().values()].filter(Boolean);
-            if (statuses.length) line4.push(...statuses);
+            for (const status of footerData.getExtensionStatuses().values()) {
+              if (typeof status !== "string") continue;
+              extensionRows.push(...status.split(/\r?\n/).map((row) => row.trim()).filter(Boolean));
+            }
           }
           const visibleLines = [line1];
           if (config.footer.line2Visible) visibleLines.push(line2);
           if (config.footer.line3Visible) visibleLines.push(line3);
           visibleLines.push(line4);
-          return visibleLines.filter((parts) => parts.length > 0).flatMap((parts) => wrapTextWithAnsi(parts.join(divider), Math.max(1, width)));
+          const dashboardRows = visibleLines
+            .filter((parts) => parts.length > 0)
+            .flatMap((parts) => wrapTextWithAnsi(parts.join(divider), Math.max(1, width)));
+          const statusRows = extensionRows.flatMap((row) => wrapTextWithAnsi(row, Math.max(1, width)));
+          return [...dashboardRows, ...statusRows];
         },
         dispose() {
           unsubscribe();
