@@ -29,7 +29,7 @@
       "refreshIntervalMs": 1000,
       "wrapToPreserveFields": true,
       "line2Visible": true,
-      "line3Visible": true,
+      "line3Visible": false,
       "showProjectName": true,
       "showFullCwd": true,
       "showGeneratedTitle": true,

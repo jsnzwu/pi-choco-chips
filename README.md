@@ -4,7 +4,7 @@ Post-start enhancements for [pi](https://pi.dev), packaged as ordinary Pi extens
 
 ## Features
 
-- Integrated dashboard with session title, project/model header, usage footer, Git status, turn metadata, thinking summaries, tool timings, and system-event records.
+- Integrated dashboard with session title, model, context percentage/window, and session duration on the first footer line; project/Git context, optional detailed usage/cost, turn metadata, thinking summaries, tool timings, and system-event records.
 - `/dashboard` — open a TUI settings page that toggles footer lines 2 and 3 and persists the choice.
 - Compact transcript spacing and Bash command styling with runtime Pi capability detection. Unsupported internals disable only the affected feature and emit a warning.
 - `/retitle` — generate a concise title from the current session.
@@ -32,7 +32,7 @@ or place the file under `PI_CODING_AGENT_DIR` when that environment variable is 
     "enabled": true,
     "footer": {
       "line2Visible": true,
-      "line3Visible": true
+      "line3Visible": false
     },
     "transcript": {
       "compactSameTurnSpacing": true
@@ -41,7 +41,7 @@ or place the file under `PI_CODING_AGENT_DIR` when that environment variable is 
 }
 ```
 
-User settings are deep-merged over the bundled defaults. Restart Pi after changing dashboard settings because compact transcript rendering patches Pi's runtime components once per process.
+User settings are deep-merged over the bundled defaults. Footer line 3, which contains detailed token/cache/cost usage, is hidden by default and remains available through `/dashboard`. Extension status values containing newlines render as separate bounded rows at the bottom of the footer. Restart Pi after changing dashboard settings because compact transcript rendering patches Pi's runtime components once per process.
 
 ## Commands and skill references
 
