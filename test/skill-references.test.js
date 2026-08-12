@@ -6,7 +6,7 @@ import {
   makeSkillBlock,
   makeSkillBundle,
   stripFrontmatter,
-} from "../extensions/skill-references.js";
+} from "../extensions/skill-references.ts";
 
 const skills = new Map([
   [

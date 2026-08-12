@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { complete } from "@earendil-works/pi-ai/compat";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { CustomEditor, getSettingsListTheme } from "@earendil-works/pi-coding-agent";
 import {
   Container,
@@ -15,8 +16,8 @@ import {
   createEarlyCompactionContinuation,
   EARLY_COMPACTION_INSTRUCTIONS,
   shouldCompactBeforeProvider,
-} from "./compaction-continuation.js";
-import { extractSkillToken, makeSkillBundle } from "./skill-references.js";
+} from "./compaction-continuation.ts";
+import { extractSkillToken, makeSkillBundle } from "./skill-references.ts";
 
 const SETTINGS_ENTRY = "pi-choco-chips:settings";
 const SKILL_BUNDLE_TYPE = "pi-choco-chips.skill-bundle";
@@ -334,7 +335,7 @@ class SkillEditor extends CustomEditor {
   }
 }
 
-export default function piChocoChips(pi) {
+export default function piChocoChips(pi: ExtensionAPI) {
   const features = { ...DEFAULT_FEATURES };
   const pendingBundleTimers = new Set();
   let editorFactory;

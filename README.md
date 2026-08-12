@@ -78,7 +78,7 @@ pi install .
 For development without installing:
 
 ```bash
-pi -e ./extensions/index.js -e ./extensions/dashboard.js
+pi -e ./extensions/index.ts -e ./extensions/dashboard.ts
 ```
 
 After changing only shortcut logic, `/reload` is sufficient. After changing dashboard rendering or settings, restart Pi.

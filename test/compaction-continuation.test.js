@@ -8,7 +8,7 @@ import {
   EARLY_COMPACTION_PERCENT,
   findAssistantBeforeCompaction,
   shouldCompactBeforeProvider,
-} from "../extensions/compaction-continuation.js";
+} from "../extensions/compaction-continuation.ts";
 
 function branchWithAssistant(stopReason = "error") {
   return [
