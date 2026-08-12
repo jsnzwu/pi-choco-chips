@@ -8,9 +8,10 @@ Post-start enhancements for [pi](https://pi.dev), packaged as ordinary Pi extens
 - `/dashboard` — open a TUI settings page that toggles footer lines 2 and 3 and persists the choice.
 - Compact transcript spacing and Bash command styling with runtime Pi capability detection. Unsupported internals disable only the affected feature and emit a warning.
 - `/retitle` — generate a concise title from the current session.
+- Compact at 80% context before the next provider request, then resume the active turn automatically. Manual or threshold compaction after an assistant error also resumes; completed responses, Pi's overflow retry, and queued user messages are left alone.
 - Multiple `/skill:name` or `$skill-name` references in one prompt, delivered as one ordered custom message.
 - Skill completion after `/skill:` or `$` anywhere in the current prompt.
-- `/choco` — inspect or toggle the shortcut enhancements for the current session.
+- `/choco` — open a TUI settings page for all shortcut enhancements; command-line status and toggles remain available.
 
 The dashboard and shortcut extension are both loaded from this package as one post-start enhancement layer.
 
@@ -54,12 +55,14 @@ Use $git-comment-gen and /skill:ponytail in the same prompt.
 
 /dashboard
 
+/choco
 /choco status
 /choco on
 /choco off
 /choco retitle on
 /choco skills off
 /choco autocomplete on
+/choco compact-resume off
 ```
 
 The `/choco` toggles are stored as session entries, so they survive `/reload` and follow forked sessions without changing host configuration.

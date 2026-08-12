@@ -22,10 +22,13 @@ const skills = [
 
 function createExtensionHarness() {
   const handlers = new Map();
+  const commands = new Map();
   const messages = [];
   const entries = [];
   const pi = {
-    registerCommand() {},
+    registerCommand(name, command) {
+      commands.set(name, command);
+    },
     on(event, handler) {
       handlers.set(event, handler);
     },
@@ -44,7 +47,7 @@ function createExtensionHarness() {
   };
 
   piChocoChips(pi);
-  return { handlers, messages, entries };
+  return { handlers, commands, messages, entries };
 }
 
 const context = {
@@ -56,6 +59,27 @@ const context = {
 };
 
 const waitForDeferredDispatch = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+test("opens the interactive Choco settings page with no arguments", async () => {
+  const harness = createExtensionHarness();
+  let customCalls = 0;
+  const commandContext = {
+    ...context,
+    hasUI: true,
+    ui: {
+      notify() {},
+      async custom(factory) {
+        customCalls++;
+        assert.equal(typeof factory, "function");
+      },
+    },
+  };
+
+  await harness.commands.get("choco").handler("", commandContext);
+
+  assert.equal(customCalls, 1);
+  assert.equal(harness.entries.length, 0);
+});
 
 test("intercepts a recognized skill once and defers one custom turn", async () => {
   const harness = createExtensionHarness();
@@ -116,4 +140,49 @@ test("passes unknown-only input through to Pi", async () => {
   assert.deepEqual(result, { action: "continue" });
   await waitForDeferredDispatch();
   assert.equal(harness.messages.length, 0);
+});
+
+test("queues one hidden follow-up when threshold compaction follows an assistant error", () => {
+  const harness = createExtensionHarness();
+  const branch = [
+    {
+      type: "message",
+      id: "assistant-1",
+      message: { role: "assistant", stopReason: "error", content: [] },
+    },
+    {
+      type: "compaction",
+      id: "compaction-1",
+      summary: "summary",
+    },
+  ];
+  const compactContext = {
+    ...context,
+    hasUI: true,
+    ui: { notify() {} },
+    isIdle: () => false,
+    hasPendingMessages: () => false,
+    sessionManager: { getBranch: () => branch },
+  };
+
+  harness.handlers.get("session_compact")(
+    {
+      type: "session_compact",
+      reason: "threshold",
+      willRetry: false,
+      compactionEntry: branch[1],
+    },
+    compactContext,
+  );
+
+  assert.equal(harness.messages.length, 1);
+  assert.equal(
+    harness.messages[0].message.customType,
+    "pi-choco-chips.compaction-continuation",
+  );
+  assert.equal(harness.messages[0].message.display, false);
+  assert.deepEqual(harness.messages[0].options, {
+    triggerTurn: true,
+    deliverAs: "followUp",
+  });
 });

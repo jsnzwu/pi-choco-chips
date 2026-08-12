@@ -1,9 +1,21 @@
 import { randomUUID } from "node:crypto";
 
 import { complete } from "@earendil-works/pi-ai/compat";
-import { CustomEditor } from "@earendil-works/pi-coding-agent";
-import { fuzzyFilter, matchesKey } from "@earendil-works/pi-tui";
+import { CustomEditor, getSettingsListTheme } from "@earendil-works/pi-coding-agent";
+import {
+  Container,
+  fuzzyFilter,
+  matchesKey,
+  SettingsList,
+  Text,
+} from "@earendil-works/pi-tui";
 
+import {
+  createCompactionContinuation,
+  createEarlyCompactionContinuation,
+  EARLY_COMPACTION_INSTRUCTIONS,
+  shouldCompactBeforeProvider,
+} from "./compaction-continuation.js";
 import { extractSkillToken, makeSkillBundle } from "./skill-references.js";
 
 const SETTINGS_ENTRY = "pi-choco-chips:settings";
@@ -14,7 +26,18 @@ const DEFAULT_FEATURES = {
   retitle: true,
   multiSkill: true,
   autocomplete: true,
+  compactionContinuation: true,
 };
+const FEATURE_SETTINGS = [
+  { id: "retitle", key: "retitle", label: "Session retitle" },
+  { id: "multi-skill", key: "multiSkill", label: "Multiple skill references" },
+  { id: "autocomplete", key: "autocomplete", label: "Skill autocomplete" },
+  {
+    id: "compact-resume",
+    key: "compactionContinuation",
+    label: "Resume after compaction",
+  },
+];
 
 function getSkillMap(pi) {
   const skills = new Map();
@@ -42,6 +65,7 @@ function featureStatus(features, pi, ctx) {
     `retitle=${features.retitle ? "on" : "off"}`,
     `multi-skill=${features.multiSkill ? "on" : "off"}`,
     `autocomplete=${features.autocomplete ? "on" : "off"}`,
+    `compact-resume=${features.compactionContinuation ? "on" : "off"}`,
     `skills=${pi ? getSkillMap(pi).size : 0}`,
     `editor=${editor}`,
   ].join(" ");
@@ -64,6 +88,51 @@ function restoreFeatures(ctx, features) {
 
 function saveFeatures(pi, features) {
   pi.appendEntry(SETTINGS_ENTRY, { ...features });
+}
+
+async function showFeatureSettings(pi, features, ctx) {
+  if (ctx.mode !== "tui") {
+    const message = "The Pi Choco Chips settings UI is available only in TUI mode";
+    notify(ctx, message, "warning");
+    return;
+  }
+
+  await ctx.ui.custom((tui, theme, _keybindings, done) => {
+    const items = FEATURE_SETTINGS.map((setting) => ({
+      id: setting.id,
+      label: setting.label,
+      currentValue: features[setting.key] ? "enabled" : "disabled",
+      values: ["enabled", "disabled"],
+    }));
+    const container = new Container();
+    container.addChild(
+      new Text(theme.fg("accent", theme.bold("Pi Choco Chips")), 1, 1),
+    );
+
+    const settingsList = new SettingsList(
+      items,
+      Math.min(items.length + 2, 15),
+      getSettingsListTheme(),
+      (id, newValue) => {
+        const setting = FEATURE_SETTINGS.find((candidate) => candidate.id === id);
+        if (!setting) return;
+        features[setting.key] = newValue === "enabled";
+        saveFeatures(pi, features);
+      },
+      () => done(undefined),
+      { enableSearch: false },
+    );
+    container.addChild(settingsList);
+
+    return {
+      render: (width) => container.render(width),
+      invalidate: () => container.invalidate(),
+      handleInput: (data) => {
+        settingsList.handleInput?.(data);
+        tui.requestRender();
+      },
+    };
+  });
 }
 
 function textFromContent(content) {
@@ -269,6 +338,7 @@ export default function piChocoChips(pi) {
   const features = { ...DEFAULT_FEATURES };
   const pendingBundleTimers = new Set();
   let editorFactory;
+  let earlyCompactionInFlight = false;
 
   pi.registerCommand("retitle", {
     description: "Generate a new title from the current session",
@@ -287,12 +357,17 @@ export default function piChocoChips(pi) {
   });
 
   pi.registerCommand("choco", {
-    description: "Show or toggle Pi Choco Chips enhancements",
+    description: "Configure Pi Choco Chips enhancements",
     handler: async (args, ctx) => {
       const parts = args.trim().split(/\s+/).filter(Boolean);
       const first = parts[0]?.toLowerCase();
 
-      if (!first || first === "status") {
+      if (!first) {
+        await showFeatureSettings(pi, features, ctx);
+        return;
+      }
+
+      if (first === "status") {
         notify(ctx, `Pi Choco Chips: ${featureStatus(features, pi, ctx)}`);
         return;
       }
@@ -302,6 +377,8 @@ export default function piChocoChips(pi) {
         skills: "multiSkill",
         "multi-skill": "multiSkill",
         autocomplete: "autocomplete",
+        compaction: "compactionContinuation",
+        "compact-resume": "compactionContinuation",
       };
 
       if (first === "on" || first === "off") {
@@ -315,7 +392,7 @@ export default function piChocoChips(pi) {
         if (!feature || (value !== "on" && value !== "off")) {
           notify(
             ctx,
-            "Usage: /choco [status|on|off|retitle on|skills on|autocomplete on]",
+            "Usage: /choco [status|on|off|retitle on|skills on|autocomplete on|compact-resume on]",
             "warning",
           );
           return;
@@ -347,11 +424,66 @@ export default function piChocoChips(pi) {
   pi.on("session_shutdown", (_event, ctx) => {
     for (const timer of pendingBundleTimers) clearTimeout(timer);
     pendingBundleTimers.clear();
+    earlyCompactionInFlight = false;
 
     if (ctx.mode === "tui" && editorFactory && ctx.ui.getEditorComponent?.() === editorFactory) {
       ctx.ui.setEditorComponent(undefined);
     }
     editorFactory = undefined;
+  });
+
+  pi.on("context", (_event, ctx) => {
+    if (earlyCompactionInFlight) return;
+
+    const contextUsage = ctx.getContextUsage();
+    if (
+      !shouldCompactBeforeProvider(contextUsage, {
+        enabled: features.compactionContinuation,
+        agentActive: !ctx.isIdle(),
+        compactionInFlight: earlyCompactionInFlight,
+        hasPendingMessages: ctx.hasPendingMessages(),
+      })
+    ) {
+      return;
+    }
+
+    earlyCompactionInFlight = true;
+    ctx.abort();
+    ctx.compact({
+      customInstructions: EARLY_COMPACTION_INSTRUCTIONS,
+      onComplete: (result) => {
+        earlyCompactionInFlight = false;
+        const continuation = createEarlyCompactionContinuation(contextUsage, result);
+        pi.sendMessage(continuation.message, continuation.options);
+        notify(ctx, "Compacted early and resumed the interrupted turn", "info");
+      },
+      onError: (error) => {
+        earlyCompactionInFlight = false;
+        notify(
+          ctx,
+          `Early compaction failed: ${error instanceof Error ? error.message : String(error)}`,
+          "error",
+        );
+      },
+    });
+  });
+
+  pi.on("session_compact", (event, ctx) => {
+    const wasEarlyCompaction = earlyCompactionInFlight;
+    const continuation = createCompactionContinuation(
+      event,
+      ctx.sessionManager.getBranch(),
+      {
+        enabled: features.compactionContinuation,
+        agentActive: !ctx.isIdle(),
+        compactionInFlight: wasEarlyCompaction,
+        hasPendingMessages: ctx.hasPendingMessages(),
+      },
+    );
+    if (!continuation) return;
+
+    pi.sendMessage(continuation.message, continuation.options);
+    notify(ctx, "Resuming the interrupted turn after compaction", "info");
   });
 
   pi.on("input", (event, ctx) => {
