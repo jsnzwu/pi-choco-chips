@@ -24,8 +24,8 @@
   },
   "pi": {
     "extensions": [
-      "./extensions/index.js",
-      "./extensions/dashboard.js"
+      "./extensions/index.ts",
+      "./extensions/dashboard.ts"
     ]
   }
 }

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
-import piChocoDashboard from "../extensions/dashboard.js";
+import piChocoDashboard from "../extensions/dashboard.ts";
 
 function createDashboardHarness() {
   const handlers = new Map();
@@ -31,8 +31,8 @@ function createDashboardHarness() {
 test("package loads the shortcut and dashboard extensions", () => {
   const packageJson = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
   assert.deepEqual(packageJson.pi.extensions, [
-    "./extensions/index.js",
-    "./extensions/dashboard.js",
+    "./extensions/index.ts",
+    "./extensions/dashboard.ts",
   ]);
 });
 

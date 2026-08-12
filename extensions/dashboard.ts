@@ -1,4 +1,5 @@
 import { complete } from "@earendil-works/pi-ai/compat";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import {
   CustomEditor,
   getMarkdownTheme,
@@ -886,7 +887,7 @@ function renderSkillBundle(message, expanded, outputPad, theme) {
   if (userText2) addSection(new UserMessageComponent(userText2, markdownTheme, outputPad));
   return hasSection ? container : void 0;
 }
-function piChocoDashboard(pi) {
+function piChocoDashboard(pi: ExtensionAPI) {
   const loaded = loadConfig();
   const config = loaded.config;
   if (!config.enabled) return;

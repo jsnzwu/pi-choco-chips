@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test, { after } from "node:test";
 
-import piChocoChips from "../extensions/index.js";
+import piChocoChips from "../extensions/index.ts";
 
 const skillDir = mkdtempSync(join(tmpdir(), "pi-choco-chips-"));
 const skillPath = join(skillDir, "SKILL.md");
