@@ -922,7 +922,6 @@ function piChocoDashboard(pi: ExtensionAPI) {
   let lastResponse;
   let lastTurn;
   let sessionUsage = cloneUsage();
-  let sessionStartedMono = performance.now();
   let foregroundWorkMs = 0;
   let foregroundWorkStartedMono;
   let gitState = {
@@ -943,7 +942,6 @@ function piChocoDashboard(pi: ExtensionAPI) {
     footerRender();
     headerRender();
   };
-  const currentSessionMs = () => Math.max(0, performance.now() - sessionStartedMono);
   const currentForegroundWorkMs = () => foregroundWorkMs + (foregroundWorkStartedMono === void 0 ? 0 : Math.max(0, performance.now() - foregroundWorkStartedMono));
   const startForegroundWork = () => {
     foregroundWorkStartedMono ??= performance.now();
@@ -1147,7 +1145,6 @@ function piChocoDashboard(pi: ExtensionAPI) {
   };
   const restoreState = (ctx) => {
     currentTurn = 0;
-    sessionStartedMono = performance.now();
     lastResponse = void 0;
     lastTurn = void 0;
     foregroundWorkMs = 0;
@@ -1274,7 +1271,7 @@ function piChocoDashboard(pi: ExtensionAPI) {
             const windowText = context ? ` (${formatTokens(context.contextWindow)})` : "";
             line1.push(theme.fg("muted", `${contextPercent}${windowText}`));
           }
-          line1.push(theme.fg("muted", formatDuration(currentSessionMs())));
+          line1.push(theme.fg("muted", formatDuration(currentForegroundWorkMs())));
           const modelUsageParts = [];
           if (config.footer.showResponseUsage) modelUsageParts.push(footerUsageText("RESP", lastResponse?.usage, theme));
           if (config.footer.showTurnUsage) modelUsageParts.push(footerUsageText("TURN", request?.usage || lastTurn?.usage, theme));

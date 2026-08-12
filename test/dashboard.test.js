@@ -52,7 +52,8 @@ test("dashboard source keeps compact footer hierarchy and multiline statuses", (
   const source = readFileSync(new URL("../extensions/dashboard.ts", import.meta.url), "utf8");
   assert.match(source, /line3Visible: false/);
   assert.match(source, /` \(\$\{formatTokens\(context\.contextWindow\)\}\)`/);
-  assert.match(source, /line1\.push\(theme\.fg\("muted", formatDuration\(currentSessionMs\(\)\)\)\)/);
+  assert.match(source, /line1\.push\(theme\.fg\("muted", formatDuration\(currentForegroundWorkMs\(\)\)\)\)/);
+  assert.doesNotMatch(source, /sessionStartedMono|currentSessionMs/);
   assert.match(source, /\)}K`/);
   assert.doesNotMatch(source, /"work "/);
   assert.match(source, /status\.split\(\/\\r\?\\n\//);
