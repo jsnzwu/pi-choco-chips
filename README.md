@@ -5,6 +5,7 @@ Post-start enhancements for [pi](https://pi.dev), packaged as ordinary Pi extens
 ## Features
 
 - Integrated dashboard with session title, model, context percentage/window, and cumulative agent-active time on the first footer line; project/Git context, optional detailed usage/cost, turn metadata, thinking summaries, tool timings, and system-event records.
+- Bundled `adam-dark` Pi theme with an Atom One Dark palette and semantic dashboard colors.
 - `/dashboard` — open a TUI settings page that toggles footer lines 2 and 3 and persists the choice.
 - Compact transcript spacing and Bash command styling with runtime Pi capability detection. Unsupported internals disable only the affected feature and emit a warning.
 - `/retitle` — generate a concise title from the current session.
@@ -13,7 +14,7 @@ Post-start enhancements for [pi](https://pi.dev), packaged as ordinary Pi extens
 - Skill completion after `/skill:` or `$` anywhere in the current prompt.
 - `/choco` — open a TUI settings page for all shortcut enhancements; command-line status and toggles remain available.
 
-The dashboard and shortcut extension are both loaded from this package as one post-start enhancement layer.
+The dashboard, shortcut extension, and `adam-dark` theme are loaded from this package as one post-start enhancement layer. Select `adam-dark` through `/settings` or set `"theme": "adam-dark"` in Pi settings.
 
 ## Settings
 

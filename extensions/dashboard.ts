@@ -315,7 +315,14 @@ function metricText(theme, label, value, valueColor = "text") {
   const zero = /^0(?:\.0+)?(?:[a-z%]*)?$/i.test(value);
   return `${theme.fg("muted", label)}${theme.fg(zero ? "dim" : valueColor, value)}`;
 }
-function usageParts(usage, config, theme, statusBar = false) {
+function cacheHitRatePart(usage, theme, statusBar = false) {
+  const denominator = usage.input + usage.cacheRead;
+  if (denominator <= 0) return void 0;
+  const hitRate = Math.round(usage.cacheRead / denominator * 100);
+  const hitColor = hitRate >= 80 ? "success" : hitRate >= 50 ? "warning" : "error";
+  return metricText(theme, "CH", `${hitRate}%`, statusBar ? "muted" : hitColor);
+}
+function usageParts(usage, config, theme, statusBar = false, showCacheHitRate = true) {
   const fields = config.transcript.usage;
   const result = [];
   const valueColor = (color) => statusBar ? "muted" : color;
@@ -326,13 +333,9 @@ function usageParts(usage, config, theme, statusBar = false) {
   }
   if (fields.cacheRead) result.push(metricText(theme, "R", formatTokens(usage.cacheRead), valueColor("text")));
   if (fields.cacheWrite) result.push(metricText(theme, "W", formatTokens(usage.cacheWrite), valueColor("text")));
-  if (fields.cacheRead) {
-    const denominator = usage.input + usage.cacheRead;
-    if (denominator > 0) {
-      const hitRate = Math.round(usage.cacheRead / denominator * 100);
-      const hitColor = hitRate >= 80 ? "success" : hitRate >= 50 ? "warning" : "error";
-      result.push(metricText(theme, "CH", `${hitRate}%`, valueColor(hitColor)));
-    }
+  if (fields.cacheRead && showCacheHitRate) {
+    const cacheHitRate = cacheHitRatePart(usage, theme, statusBar);
+    if (cacheHitRate) result.push(cacheHitRate);
   }
   if (fields.cost) {
     const cost = formatCost(usage.cost);
@@ -393,7 +396,7 @@ function styledGitText(state, config, theme, statusBar = false) {
   const countColor = statusBar ? "muted" : "warning";
   if (config.git.showBranch) {
     const branch = state.branch || "detached";
-    parts.push(theme.fg("syntaxFunction", dirty ? `${branch}*` : branch));
+    parts.push(theme.fg("accent", dirty ? `${branch}*` : branch));
   }
   if (config.git.showAheadBehind && (state.ahead || state.behind)) {
     parts.push(metricText(theme, "\u2191", String(state.ahead), countColor));
@@ -455,7 +458,8 @@ function renderMeta(meta, width, theme, config, thinkingSummaryVisible) {
   if (meta.kind === "user") {
     const time2 = timeParts(meta.timestamp, meta.relativeMs, config).join(" \xB7 ");
     lines.push(separatorLine(`${config.transcript.roles.turn} ${meta.turn} \xB7 ${time2}`, width, theme));
-    const prefix = theme.fg("accent", `${config.transcript.roles.user} #${meta.turn}`);
+    const thinkingColor = theme.getThinkingBorderColor(meta.thinkingLevel || "off");
+    const prefix = thinkingColor(`${config.transcript.roles.user} #${meta.turn}`);
     lines.push(...wrapTextWithAnsi(`${prefix}${rail}${theme.fg("dim", time2)}`, Math.max(1, width)));
     return lines;
   }
@@ -957,6 +961,11 @@ function piChocoDashboard(pi: ExtensionAPI) {
     phaseStartedMono = performance.now();
     requestUiRender();
   };
+  const updateWorkingIndicator = (ctx) => {
+    if (!config.working.enabled) return;
+    const thinkingColor = ctx.ui.theme.getThinkingBorderColor(currentThinking);
+    ctx.ui.setWorkingIndicator({ frames: [thinkingColor("\u25CF")] });
+  };
   const appendSystem = (label, text, level = "info", timestamp = Date.now()) => {
     appendMeta({
       kind: "system",
@@ -1257,7 +1266,7 @@ function piChocoDashboard(pi: ExtensionAPI) {
           const line4 = [];
           const thinkingColor = theme.getThinkingBorderColor(currentThinking);
           const context = ctx.getContextUsage();
-          const contextPercent = context ? context.percent === null ? "?" : `${context.percent.toFixed(1)}%` : void 0;
+          const contextPercent = context ? context.percent === null ? "?" : `${Math.round(context.percent)}%` : void 0;
           if (config.footer.showGeneratedTitle) {
             line1.push(thinkingColor(theme.bold(title || basename(ctx.cwd))));
           }
@@ -1268,15 +1277,20 @@ function piChocoDashboard(pi: ExtensionAPI) {
             line1.push(`${thinking}${modelText}`);
           }
           if (contextPercent !== void 0) {
-            const windowText = context ? ` (${formatTokens(context.contextWindow)})` : "";
-            line1.push(theme.fg("muted", `${contextPercent}${windowText}`));
+            const contextParts = [contextPercent];
+            if (context) contextParts.push(formatTokens(context.contextWindow));
+            if (config.footer.showCacheUsage) {
+              const cacheHitRate = cacheHitRatePart(sessionUsage, theme, true);
+              if (cacheHitRate) contextParts.push(cacheHitRate);
+            }
+            line1.push(theme.fg("muted", contextParts.join("/")));
           }
           line1.push(theme.fg("muted", formatDuration(currentForegroundWorkMs())));
           const modelUsageParts = [];
           if (config.footer.showResponseUsage) modelUsageParts.push(footerUsageText("RESP", lastResponse?.usage, theme));
           if (config.footer.showTurnUsage) modelUsageParts.push(footerUsageText("TURN", request?.usage || lastTurn?.usage, theme));
           if (config.footer.showSessionUsage) {
-            const sessionParts = usageParts(sessionUsage, config, theme, true);
+            const sessionParts = usageParts(sessionUsage, config, theme, true, false);
             if (config.footer.showTurnNumber) {
               const turn = `${theme.fg("muted", "turn ")}${theme.fg("muted", String(currentTurn))}`;
               const costIndex = config.transcript.usage.cost ? sessionParts.length - 1 : -1;
@@ -1428,7 +1442,7 @@ function piChocoDashboard(pi: ExtensionAPI) {
     ctx.ui.setHiddenThinkingLabel(config.transcript.thinking.hiddenLabel);
     if (config.working.enabled) {
       ctx.ui.setWorkingVisible(true);
-      ctx.ui.setWorkingIndicator({ frames: [ctx.ui.theme.fg("accent", "\u25CF")] });
+      updateWorkingIndicator(ctx);
     }
     if (interval) clearInterval(interval);
     const tickMs = Math.max(250, Math.min(config.footer.refreshIntervalMs, config.working.refreshIntervalMs));
@@ -1494,7 +1508,8 @@ function piChocoDashboard(pi: ExtensionAPI) {
         kind: "user",
         timestamp,
         relativeMs: 0,
-        turn: currentTurn
+        turn: currentTurn,
+        thinkingLevel: currentThinking
       });
       setPhase("Queued");
       return;
@@ -1725,6 +1740,7 @@ function piChocoDashboard(pi: ExtensionAPI) {
   });
   pi.on("thinking_level_select", (event) => {
     currentThinking = event.level;
+    if (activeCtx) updateWorkingIndicator(activeCtx);
     requestUiRender();
     if (config.transcript.systemEvents.modelAndSession) {
       appendSystem("Thinking level", `${event.previousLevel} \u2192 ${event.level}`, "info");

@@ -7,6 +7,7 @@
   "type": "module",
   "files": [
     "extensions",
+    "themes",
     "pi-choco-setting.json",
     "README.md",
     "LICENSE"
@@ -26,6 +27,9 @@
     "extensions": [
       "./extensions/index.ts",
       "./extensions/dashboard.ts"
+    ],
+    "themes": [
+      "./themes/adam-dark.json"
     ]
   }
 }
