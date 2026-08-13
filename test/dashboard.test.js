@@ -28,12 +28,32 @@ function createDashboardHarness() {
   return { handlers, commands, messageRenderers, entryRenderers };
 }
 
-test("package loads the shortcut and dashboard extensions", () => {
+test("package loads the shortcut, dashboard, and theme resources", () => {
   const packageJson = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
   assert.deepEqual(packageJson.pi.extensions, [
     "./extensions/index.ts",
     "./extensions/dashboard.ts",
   ]);
+  assert.deepEqual(packageJson.pi.themes, ["./themes/adam-dark.json"]);
+  assert.equal(packageJson.files.includes("themes"), true);
+});
+
+test("bundled adam-dark theme resolves its semantic palette", () => {
+  const theme = JSON.parse(
+    readFileSync(new URL("../themes/adam-dark.json", import.meta.url), "utf8"),
+  );
+  const resolve = (value, seen = new Set()) => {
+    if (typeof value !== "string" || value === "" || value.startsWith("#")) return value;
+    assert.equal(seen.has(value), false, `cyclic theme variable: ${value}`);
+    assert.equal(Object.hasOwn(theme.vars, value), true, `missing theme variable: ${value}`);
+    return resolve(theme.vars[value], new Set([...seen, value]));
+  };
+
+  for (const value of Object.values(theme.colors)) resolve(value);
+  assert.equal(theme.name, "adam-dark");
+  assert.equal(resolve(theme.colors.accent), "#61afef");
+  assert.equal(resolve(theme.colors.syntaxType), "#56b6c2");
+  assert.equal(resolve(theme.colors.syntaxOperator), "#56b6c2");
 });
 
 test("bundled settings contain the dashboard section", () => {
@@ -51,13 +71,26 @@ test("bundled settings contain the dashboard section", () => {
 test("dashboard source keeps compact footer hierarchy and multiline statuses", () => {
   const source = readFileSync(new URL("../extensions/dashboard.ts", import.meta.url), "utf8");
   assert.match(source, /line3Visible: false/);
-  assert.match(source, /` \(\$\{formatTokens\(context\.contextWindow\)\}\)`/);
+  assert.match(source, /contextParts\.push\(formatTokens\(context\.contextWindow\)\)/);
+  assert.match(source, /line1\.push\(theme\.fg\("muted", contextParts\.join\("\/"\)\)\)/);
   assert.match(source, /line1\.push\(theme\.fg\("muted", formatDuration\(currentForegroundWorkMs\(\)\)\)\)/);
+  assert.match(source, /if \(config\.footer\.showCacheUsage\) \{/);
+  assert.match(source, /contextParts\.push\(cacheHitRate\)/);
+  assert.match(source, /usageParts\(sessionUsage, config, theme, true, false\)/);
   assert.doesNotMatch(source, /sessionStartedMono|currentSessionMs/);
   assert.match(source, /\)}K`/);
   assert.doesNotMatch(source, /"work "/);
   assert.match(source, /status\.split\(\/\\r\?\\n\//);
   assert.match(source, /return \[\.\.\.dashboardRows, \.\.\.statusRows\]/);
+});
+
+test("dashboard uses Pi semantic colors for git and thinking-level activity", () => {
+  const source = readFileSync(new URL("../extensions/dashboard.ts", import.meta.url), "utf8");
+
+  assert.match(source, /theme\.fg\("accent", dirty \? `\$\{branch\}\*` : branch\)/);
+  assert.match(source, /theme\.getThinkingBorderColor\(meta\.thinkingLevel \|\| "off"\)/);
+  assert.match(source, /theme\.getThinkingBorderColor\(currentThinking\)/);
+  assert.match(source, /thinkingLevel: currentThinking/);
 });
 
 test("dashboard registers its renderers and lifecycle handlers", () => {
