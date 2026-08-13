@@ -70,12 +70,12 @@
     "syntaxPunctuation": "punctuation",
 
     "thinkingOff": "#8A8F98",
-    "thinkingMinimal": "#89B4FA",
+    "thinkingMinimal": "#76A9FB",
     "thinkingLow": "#74C7EC",
-    "thinkingMedium": "#94E2D5",
-    "thinkingHigh": "#F9E2AF",
-    "thinkingXhigh": "#FAB387",
-    "thinkingMax": "#FFDC73",
+    "thinkingMedium": "#B0DE90",
+    "thinkingHigh": "#E5D183",
+    "thinkingXhigh": "#FFB98A",
+    "thinkingMax": "#FE9A9F",
 
     "bashMode": "cyan"
   }
