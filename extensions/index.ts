@@ -1,11 +1,12 @@
 import { randomUUID } from "node:crypto";
 
 import { complete } from "@earendil-works/pi-ai/compat";
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, KeybindingsManager } from "@earendil-works/pi-coding-agent";
 import { CustomEditor, getSettingsListTheme } from "@earendil-works/pi-coding-agent";
 import {
   Container,
   fuzzyFilter,
+  type KeybindingsConfig,
   matchesKey,
   SettingsList,
   Text,
@@ -23,6 +24,11 @@ const SETTINGS_ENTRY = "pi-choco-chips:settings";
 const SKILL_BUNDLE_TYPE = "pi-choco-chips.skill-bundle";
 const MAX_SKILL_SUGGESTIONS = 20;
 const MAX_TITLE_SOURCE_CHARS = 24_000;
+const COMPOSER_KEYBINDINGS = {
+  "tui.input.submit": "enter",
+  "tui.input.newLine": ["shift+enter", "ctrl+j"],
+  "app.message.followUp": "alt+enter",
+} satisfies KeybindingsConfig;
 const DEFAULT_FEATURES = {
   retitle: true,
   multiSkill: true,
@@ -312,6 +318,12 @@ function shouldRequerySkillAutocomplete(data) {
   return ["backspace", "left", "right", "home", "end"].some((key) => matchesKey(data, key));
 }
 
+export function applyComposerKeybindings(keybindings: KeybindingsManager) {
+  const previous = keybindings.getUserBindings();
+  keybindings.setUserBindings({ ...previous, ...COMPOSER_KEYBINDINGS });
+  return () => keybindings.setUserBindings(previous);
+}
+
 class SkillEditor extends CustomEditor {
   triggerSkillAutocomplete() {
     const cursor = this.getCursor();
@@ -339,6 +351,7 @@ export default function piChocoChips(pi: ExtensionAPI) {
   const features = { ...DEFAULT_FEATURES };
   const pendingBundleTimers = new Set();
   let editorFactory;
+  let restoreComposerKeybindings;
   let earlyCompactionInFlight = false;
 
   pi.registerCommand("retitle", {
@@ -417,7 +430,11 @@ export default function piChocoChips(pi: ExtensionAPI) {
           () => features.autocomplete,
         ),
       );
-      editorFactory = (tui, theme, keybindings) => new SkillEditor(tui, theme, keybindings);
+      editorFactory = (tui, theme, keybindings) => {
+        restoreComposerKeybindings?.();
+        restoreComposerKeybindings = applyComposerKeybindings(keybindings);
+        return new SkillEditor(tui, theme, keybindings);
+      };
       ctx.ui.setEditorComponent(editorFactory);
     }
   });
@@ -426,6 +443,8 @@ export default function piChocoChips(pi: ExtensionAPI) {
     for (const timer of pendingBundleTimers) clearTimeout(timer);
     pendingBundleTimers.clear();
     earlyCompactionInFlight = false;
+    restoreComposerKeybindings?.();
+    restoreComposerKeybindings = undefined;
 
     if (ctx.mode === "tui" && editorFactory && ctx.ui.getEditorComponent?.() === editorFactory) {
       ctx.ui.setEditorComponent(undefined);
