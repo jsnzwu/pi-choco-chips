@@ -12,6 +12,7 @@ Post-start enhancements for [pi](https://pi.dev), packaged as ordinary Pi extens
 - Compact at 80% context before the next provider request, then resume the active turn automatically. Manual or threshold compaction after an assistant error also resumes; completed responses, Pi's overflow retry, and queued user messages are left alone.
 - Multiple `/skill:name` or `$skill-name` references in one prompt, delivered as one ordered custom message.
 - Skill completion after `/skill:` or `$` anywhere in the current prompt.
+- Consistent composer controls: Enter submits or steers an active turn, Alt+Enter queues a follow-up, and Shift+Enter inserts a newline. Ctrl+J remains the terminal-safe newline fallback.
 - `/choco` — open a TUI settings page for all shortcut enhancements; command-line status and toggles remain available.
 
 The dashboard, shortcut extension, and `adam-dark` theme are loaded from this package as one post-start enhancement layer. Select `adam-dark` through `/settings` or set `"theme": "adam-dark"` in Pi settings.

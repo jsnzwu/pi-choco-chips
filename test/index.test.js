@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test, { after } from "node:test";
 
-import piChocoChips from "../extensions/index.ts";
+import piChocoChips, { applyComposerKeybindings } from "../extensions/index.ts";
 
 const skillDir = mkdtempSync(join(tmpdir(), "pi-choco-chips-"));
 const skillPath = join(skillDir, "SKILL.md");
@@ -59,6 +59,38 @@ const context = {
 };
 
 const waitForDeferredDispatch = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+test("applies and restores the shared composer keybindings", () => {
+  let userBindings = {
+    "tui.editor.cursorUp": "ctrl+p",
+    "tui.input.submit": "ctrl+enter",
+    "tui.input.newLine": "alt+enter",
+    "app.message.followUp": [],
+  };
+  const keybindings = {
+    getUserBindings: () => ({ ...userBindings }),
+    setUserBindings: (next) => {
+      userBindings = { ...next };
+    },
+  };
+
+  const restore = applyComposerKeybindings(keybindings);
+
+  assert.deepEqual(userBindings, {
+    "tui.editor.cursorUp": "ctrl+p",
+    "tui.input.submit": "enter",
+    "tui.input.newLine": ["shift+enter", "ctrl+j"],
+    "app.message.followUp": "alt+enter",
+  });
+
+  restore();
+  assert.deepEqual(userBindings, {
+    "tui.editor.cursorUp": "ctrl+p",
+    "tui.input.submit": "ctrl+enter",
+    "tui.input.newLine": "alt+enter",
+    "app.message.followUp": [],
+  });
+});
 
 test("opens the interactive Choco settings page with no arguments", async () => {
   const harness = createExtensionHarness();
