@@ -52,6 +52,7 @@ test("bundled adam-dark theme resolves its semantic palette", () => {
   for (const value of Object.values(theme.colors)) resolve(value);
   assert.equal(theme.name, "adam-dark");
   assert.equal(resolve(theme.colors.accent), "#61afef");
+  assert.equal(resolve(theme.colors.userMessageBg), "#30343b");
   assert.equal(resolve(theme.colors.syntaxType), "#56b6c2");
   assert.equal(resolve(theme.colors.syntaxOperator), "#56b6c2");
 });
