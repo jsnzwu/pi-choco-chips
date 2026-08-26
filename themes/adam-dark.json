@@ -9,6 +9,7 @@
     "yellow": "#e5c07b",
     "blue": "#61afef",
     "gray": "#5c6370",
+    "userMessageBg": "#30343b",
     "keyword": "magenta",
     "function": "blue",
     "variable": "red",
@@ -33,7 +34,7 @@
     "thinkingText": "gray",
 
     "selectedBg": "blue",
-    "userMessageBg": "",
+    "userMessageBg": "userMessageBg",
     "userMessageText": "",
     "customMessageBg": "",
     "customMessageText": "",
