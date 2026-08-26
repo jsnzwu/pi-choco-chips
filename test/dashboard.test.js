@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
-import piChocoDashboard from "../extensions/dashboard.ts";
+import piChocoDashboard, {
+  extensionStatusGroups,
+  packFooterParts,
+} from "../extensions/dashboard.ts";
 
 function createDashboardHarness() {
   const handlers = new Map();
@@ -69,7 +72,7 @@ test("bundled settings contain the dashboard section", () => {
   assert.equal(settings.dashboard.transcript.compactSameTurnSpacing, true);
 });
 
-test("dashboard source keeps compact footer hierarchy and multiline statuses", () => {
+test("dashboard source keeps compact footer hierarchy and field-aware statuses", () => {
   const source = readFileSync(new URL("../extensions/dashboard.ts", import.meta.url), "utf8");
   assert.match(source, /line3Visible: false/);
   assert.match(source, /contextParts\.push\(formatTokens\(context\.contextWindow\)\)/);
@@ -82,7 +85,38 @@ test("dashboard source keeps compact footer hierarchy and multiline statuses", (
   assert.match(source, /\)}K`/);
   assert.doesNotMatch(source, /"work "/);
   assert.match(source, /status\.split\(\/\\r\?\\n\//);
+  assert.match(source, /extensionStatusGroups\(footerData\.getExtensionStatuses\(\)\)/);
+  assert.match(source, /packFooterParts\(parts, width, divider\)/);
   assert.match(source, /return \[\.\.\.dashboardRows, \.\.\.statusRows\]/);
+});
+
+test("footer packing moves whole fields instead of splitting them", () => {
+  assert.deepEqual(
+    packFooterParts(["title", "model", "context"], 13, " · "),
+    ["title · model", "context"],
+  );
+  assert.deepEqual(
+    packFooterParts(["Weyaw Rust", "MCP 1/1"], 20, " · "),
+    ["Weyaw Rust · MCP 1/1"],
+  );
+  assert.deepEqual(
+    packFooterParts(["Weyaw Rust", "MCP 1/1"], 19, " · "),
+    ["Weyaw Rust", "MCP 1/1"],
+  );
+});
+
+test("footer groups Weyaw and MCP while preserving other status lines", () => {
+  const statuses = new Map([
+    ["weyaw", "Weyaw Rust"],
+    ["mcp", "MCP 1/1"],
+    ["other", "ready\nidle"],
+  ]);
+
+  assert.deepEqual(extensionStatusGroups(statuses), [
+    ["Weyaw Rust", "MCP 1/1"],
+    ["ready"],
+    ["idle"],
+  ]);
 });
 
 test("dashboard uses Pi semantic colors for git and thinking-level activity", () => {

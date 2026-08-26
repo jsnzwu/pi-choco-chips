@@ -43,7 +43,7 @@ or place the file under `PI_CODING_AGENT_DIR` when that environment variable is 
 }
 ```
 
-User settings are deep-merged over the bundled defaults. Footer line 3, which contains detailed token/cache/cost usage, is hidden by default and remains available through `/dashboard`. Extension status values containing newlines render as separate bounded rows at the bottom of the footer. Restart Pi after changing dashboard settings because compact transcript rendering patches Pi's runtime components once per process.
+User settings are deep-merged over the bundled defaults. Footer line 3, which contains detailed token/cache/cost usage, is hidden by default and remains available through `/dashboard`. The footer packs complete fields onto each row and moves fields that do not fit to the next row instead of splitting them across lines; an individual oversized field is truncated. Weyaw and MCP statuses share one row when space allows, while multiline extension statuses remain separate bounded rows at the bottom of the footer. Restart Pi after changing dashboard settings because compact transcript rendering patches Pi's runtime components once per process.
 
 ## Commands and skill references
 
