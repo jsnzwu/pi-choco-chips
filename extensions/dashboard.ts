@@ -31,6 +31,7 @@ const TITLE_STATE_TYPE = "pi-choco-chips.dashboard.title-state";
 const SKILL_BUNDLE_TYPE = "pi-choco-chips.skill-bundle";
 const CONFIG_FILE = "pi-choco-setting.json";
 const BUNDLED_CONFIG_FILE = fileURLToPath(new URL("../pi-choco-setting.json", import.meta.url));
+const GROUPED_EXTENSION_STATUS_KEYS = new Set(["weyaw", "mcp"]);
 const EMPTY_USAGE = {
   input: 0,
   output: 0,
@@ -406,6 +407,48 @@ function styledGitText(state, config, theme, statusBar = false) {
   if (config.git.showModifiedCount) parts.push(metricText(theme, "M", String(state.modified), countColor));
   if (config.git.showUntrackedCount) parts.push(metricText(theme, "?", String(state.untracked), countColor));
   return parts.join(" ");
+}
+function footerStatusLines(status) {
+  if (typeof status !== "string") return [];
+  return status.split(/\r?\n/).map((row) => row.trim()).filter(Boolean);
+}
+function extensionStatusGroups(statuses) {
+  const groups = [];
+  let groupedStatusesAdded = false;
+  for (const [key, status] of statuses) {
+    if (GROUPED_EXTENSION_STATUS_KEYS.has(key)) {
+      if (groupedStatusesAdded) continue;
+      groupedStatusesAdded = true;
+      const groupedLines = [...GROUPED_EXTENSION_STATUS_KEYS]
+        .map((groupedKey) => footerStatusLines(statuses.get(groupedKey)))
+        .filter((lines) => lines.length > 0);
+      const firstLines = groupedLines.map((lines) => lines[0]);
+      if (firstLines.length > 0) groups.push(firstLines);
+      for (const lines of groupedLines) {
+        groups.push(...lines.slice(1).map((line) => [line]));
+      }
+      continue;
+    }
+    groups.push(...footerStatusLines(status).map((line) => [line]));
+  }
+  return groups;
+}
+function packFooterParts(parts, width, divider) {
+  const columns = Number.isFinite(width) ? Math.max(1, Math.trunc(width)) : 1;
+  const rows = [];
+  let row = "";
+  for (const part of parts) {
+    if (typeof part !== "string" || visibleWidth(part) === 0) continue;
+    const candidate = row ? `${row}${divider}${part}` : part;
+    if (row && visibleWidth(candidate) > columns) {
+      rows.push(truncateToWidth(row, columns, "…"));
+      row = part;
+    } else {
+      row = candidate;
+    }
+  }
+  if (row) rows.push(truncateToWidth(row, columns, "…"));
+  return rows;
 }
 function parseGitStatus(output) {
   const state = {
@@ -1327,21 +1370,20 @@ function piChocoDashboard(pi: ExtensionAPI) {
             line4.push(`${phase}${elapsed}`);
           }
           if (config.footer.showClock) line4.push(formatAbsolute(Date.now(), config));
-          const extensionRows = [];
-          if (config.footer.showExtensionStatuses) {
-            for (const status of footerData.getExtensionStatuses().values()) {
-              if (typeof status !== "string") continue;
-              extensionRows.push(...status.split(/\r?\n/).map((row) => row.trim()).filter(Boolean));
-            }
-          }
+          const extensionGroups = config.footer.showExtensionStatuses
+            ? extensionStatusGroups(footerData.getExtensionStatuses())
+            : [];
           const visibleLines = [line1];
           if (config.footer.line2Visible) visibleLines.push(line2);
           if (config.footer.line3Visible) visibleLines.push(line3);
           visibleLines.push(line4);
+          const renderParts = (parts) => config.footer.wrapToPreserveFields
+            ? packFooterParts(parts, width, divider)
+            : wrapTextWithAnsi(parts.join(divider), Math.max(1, width));
           const dashboardRows = visibleLines
             .filter((parts) => parts.length > 0)
-            .flatMap((parts) => wrapTextWithAnsi(parts.join(divider), Math.max(1, width)));
-          const statusRows = extensionRows.flatMap((row) => wrapTextWithAnsi(row, Math.max(1, width)));
+            .flatMap(renderParts);
+          const statusRows = extensionGroups.flatMap(renderParts);
           return [...dashboardRows, ...statusRows];
         },
         dispose() {
@@ -1816,5 +1858,7 @@ function piChocoDashboard(pi: ExtensionAPI) {
   });
 }
 export {
+  extensionStatusGroups,
+  packFooterParts,
   piChocoDashboard as default
 };
