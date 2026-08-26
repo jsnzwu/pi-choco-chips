@@ -90,6 +90,9 @@ test("dashboard uses Pi semantic colors for git and thinking-level activity", ()
   assert.match(source, /theme\.fg\("accent", dirty \? `\$\{branch\}\*` : branch\)/);
   assert.match(source, /theme\.getThinkingBorderColor\(meta\.thinkingLevel \|\| "off"\)/);
   assert.match(source, /theme\.getThinkingBorderColor\(currentThinking\)/);
+  assert.equal(source.includes('const thinking = config.footer.showThinkingLevel ? `\\xB7${currentThinking}` : "";'), true);
+  assert.equal(source.includes('line1.push(thinkingColor(theme.bold(`${model}${thinking}`)));'), true);
+  assert.doesNotMatch(source, /theme\.bold\(`\(\$\{currentThinking\}\)`\)/);
   assert.match(source, /thinkingLevel: currentThinking/);
 });
 
