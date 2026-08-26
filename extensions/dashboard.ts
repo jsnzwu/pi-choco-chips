@@ -1272,9 +1272,8 @@ function piChocoDashboard(pi: ExtensionAPI) {
           }
           if (config.footer.showProviderAndModel) {
             const model = `${currentProvider}/${currentModel}`;
-            const modelText = theme.fg("syntaxString", theme.bold(model));
-            const thinking = config.footer.showThinkingLevel ? `${thinkingColor(theme.bold(`(${currentThinking})`))} ` : "";
-            line1.push(`${thinking}${modelText}`);
+            const thinking = config.footer.showThinkingLevel ? `\xB7${currentThinking}` : "";
+            line1.push(thinkingColor(theme.bold(`${model}${thinking}`)));
           }
           if (contextPercent !== void 0) {
             const contextParts = [contextPercent];
