@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import piChocoDashboard, {
+  compactPathForWidth,
   extensionStatusGroups,
   packFooterParts,
 } from "../extensions/dashboard.ts";
@@ -87,6 +88,7 @@ test("dashboard source keeps compact footer hierarchy and field-aware statuses",
   assert.match(source, /status\.split\(\/\\r\?\\n\//);
   assert.match(source, /extensionStatusGroups\(footerData\.getExtensionStatuses\(\)\)/);
   assert.match(source, /packFooterParts\(parts, width, divider\)/);
+  assert.match(source, /compactPathForWidth\(ctx\.cwd, width - \(relaxed \? 4 : 0\)\)/);
   assert.match(source, /return \[\.\.\.dashboardRows, \.\.\.statusRows\]/);
 });
 
@@ -102,6 +104,20 @@ test("footer packing moves whole fields instead of splitting them", () => {
   assert.deepEqual(
     packFooterParts(["Weyaw Rust", "MCP 1/1"], 19, " · "),
     ["Weyaw Rust", "MCP 1/1"],
+  );
+});
+
+test("footer uses stable segment abbreviations for narrow paths", () => {
+  const cwd = "/mnt/c/Users/wuzn/Nextcloud/sync-git/workflow/weyaw-rs";
+
+  assert.equal(compactPathForWidth(cwd, 80), cwd);
+  assert.equal(
+    compactPathForWidth(cwd, 44),
+    "/mnt/c/Users/wuzn/N/s-g/workflow/weyaw-rs",
+  );
+  assert.equal(
+    compactPathForWidth(cwd, 29),
+    "…/N/s-g/workflow/weyaw-rs",
   );
 });
 
