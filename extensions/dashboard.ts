@@ -31,6 +31,7 @@ const TITLE_STATE_TYPE = "pi-choco-chips.dashboard.title-state";
 const SKILL_BUNDLE_TYPE = "pi-choco-chips.skill-bundle";
 const CONFIG_FILE = "pi-choco-setting.json";
 const BUNDLED_CONFIG_FILE = fileURLToPath(new URL("../pi-choco-setting.json", import.meta.url));
+const MINIMAL_FOOTER_WIDTH = 60;
 const GROUPED_EXTENSION_STATUS_KEYS = new Set(["weyaw", "mcp"]);
 const EMPTY_USAGE = {
   input: 0,
@@ -468,9 +469,9 @@ function pathPrefixLength(segments) {
 function abbreviatePathSegment(segment) {
   return segment.replace(/[^._-]+/gu, (token) => Array.from(token)[0] || "");
 }
-function compactPathForWidth(pathText, width) {
+function compactPathForWidth(pathText, width, forceCompact = false) {
   const columns = Number.isFinite(width) ? Math.max(1, Math.trunc(width)) : 1;
-  if (typeof pathText !== "string" || visibleWidth(pathText) <= columns) return pathText;
+  if (typeof pathText !== "string" || !forceCompact && visibleWidth(pathText) <= columns) return pathText;
   const separator = pathText.includes("\\") && !pathText.includes("/") ? "\\" : "/";
   const root = pathText.startsWith(separator) ? separator : "";
   const segments = pathText.split(/[\\/]+/).filter(Boolean);
@@ -1342,8 +1343,9 @@ function piChocoDashboard(pi: ExtensionAPI) {
         },
         render(width) {
           const relaxed = width >= 120;
+          const minimal = width < MINIMAL_FOOTER_WIDTH;
           const divider = theme.fg("borderMuted", " \xB7 ");
-          const displayedCwd = compactPathForWidth(ctx.cwd, width - (relaxed ? 4 : 0));
+          const displayedCwd = compactPathForWidth(ctx.cwd, width - (relaxed ? 4 : 0), minimal);
           const line1 = [];
           const line2 = [];
           const line3 = [];
@@ -1359,7 +1361,7 @@ function piChocoDashboard(pi: ExtensionAPI) {
             const thinking = config.footer.showThinkingLevel ? `\xB7${currentThinking}` : "";
             line1.push(thinkingColor(theme.bold(`${model}${thinking}`)));
           }
-          if (contextPercent !== void 0) {
+          if (!minimal && contextPercent !== void 0) {
             const contextParts = [contextPercent];
             if (context) contextParts.push(formatTokens(context.contextWindow));
             if (config.footer.showCacheUsage) {
@@ -1368,7 +1370,7 @@ function piChocoDashboard(pi: ExtensionAPI) {
             }
             line1.push(theme.fg("muted", contextParts.join("/")));
           }
-          line1.push(theme.fg("muted", formatDuration(currentForegroundWorkMs())));
+          if (!minimal) line1.push(theme.fg("muted", formatDuration(currentForegroundWorkMs())));
           const modelUsageParts = [];
           if (config.footer.showResponseUsage) modelUsageParts.push(footerUsageText("RESP", lastResponse?.usage, theme));
           if (config.footer.showTurnUsage) modelUsageParts.push(footerUsageText("TURN", request?.usage || lastTurn?.usage, theme));
@@ -1397,20 +1399,20 @@ function piChocoDashboard(pi: ExtensionAPI) {
               line3.push(`${theme.fg("dim", "usage ")}${modelUsageParts.join(" ")}`);
             }
           } else {
-            if (config.footer.showProjectName) {
+            if (!minimal && config.footer.showProjectName) {
               line2.push(theme.fg("syntaxString", theme.bold(basename(ctx.cwd))));
             }
             if (config.footer.showFullCwd) line2.push(theme.fg("dim", displayedCwd));
-            if (config.footer.showGitWorktree) {
+            if (!minimal && config.footer.showGitWorktree) {
               line2.push(`${theme.fg("dim", "git ")}${styledGitText(gitState, config, theme, true)}`);
             }
-            if (modelUsageParts.length) line3.push(modelUsageParts.join(" "));
+            if (!minimal && modelUsageParts.length) line3.push(modelUsageParts.join(" "));
           }
-          if (config.footer.showRuntimePhase) {
+          if (!minimal && config.footer.showRuntimePhase) {
             const elapsed = phase === "Ready" ? "" : ` ${formatDuration(performance.now() - phaseStartedMono)}`;
             line4.push(`${phase}${elapsed}`);
           }
-          if (config.footer.showClock) line4.push(formatAbsolute(Date.now(), config));
+          if (!minimal && config.footer.showClock) line4.push(formatAbsolute(Date.now(), config));
           const extensionGroups = config.footer.showExtensionStatuses
             ? extensionStatusGroups(footerData.getExtensionStatuses())
             : [];
