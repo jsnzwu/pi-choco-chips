@@ -88,7 +88,11 @@ test("dashboard source keeps compact footer hierarchy and field-aware statuses",
   assert.match(source, /status\.split\(\/\\r\?\\n\//);
   assert.match(source, /extensionStatusGroups\(footerData\.getExtensionStatuses\(\)\)/);
   assert.match(source, /packFooterParts\(parts, width, divider\)/);
-  assert.match(source, /compactPathForWidth\(ctx\.cwd, width - \(relaxed \? 4 : 0\)\)/);
+  assert.match(source, /const MINIMAL_FOOTER_WIDTH = 60/);
+  assert.match(source, /const minimal = width < MINIMAL_FOOTER_WIDTH/);
+  assert.match(source, /compactPathForWidth\(ctx\.cwd, width - \(relaxed \? 4 : 0\), minimal\)/);
+  assert.match(source, /if \(!minimal && contextPercent !== void 0\)/);
+  assert.match(source, /if \(!minimal && config\.footer\.showGitWorktree\)/);
   assert.match(source, /return \[\.\.\.dashboardRows, \.\.\.statusRows\]/);
 });
 
@@ -111,6 +115,10 @@ test("footer uses stable segment abbreviations for narrow paths", () => {
   const cwd = "/mnt/c/Users/wuzn/Nextcloud/sync-git/workflow/weyaw-rs";
 
   assert.equal(compactPathForWidth(cwd, 80), cwd);
+  assert.equal(
+    compactPathForWidth(cwd, 80, true),
+    "/mnt/c/Users/wuzn/N/s-g/workflow/weyaw-rs",
+  );
   assert.equal(
     compactPathForWidth(cwd, 44),
     "/mnt/c/Users/wuzn/N/s-g/workflow/weyaw-rs",
