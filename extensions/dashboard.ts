@@ -450,6 +450,46 @@ function packFooterParts(parts, width, divider) {
   if (row) rows.push(truncateToWidth(row, columns, "…"));
   return rows;
 }
+function pathPrefixLength(segments) {
+  if (
+    segments[0]?.toLowerCase() === "mnt"
+    && /^[a-z]$/i.test(segments[1] || "")
+    && segments[2]?.toLowerCase() === "users"
+    && segments[3]
+  ) return 4;
+  if (segments[0]?.toLowerCase() === "home" && segments[1]) return 2;
+  if (
+    /^[a-z]:$/i.test(segments[0] || "")
+    && segments[1]?.toLowerCase() === "users"
+    && segments[2]
+  ) return 3;
+  return segments.length > 0 ? 1 : 0;
+}
+function abbreviatePathSegment(segment) {
+  return segment.replace(/[^._-]+/gu, (token) => Array.from(token)[0] || "");
+}
+function compactPathForWidth(pathText, width) {
+  const columns = Number.isFinite(width) ? Math.max(1, Math.trunc(width)) : 1;
+  if (typeof pathText !== "string" || visibleWidth(pathText) <= columns) return pathText;
+  const separator = pathText.includes("\\") && !pathText.includes("/") ? "\\" : "/";
+  const root = pathText.startsWith(separator) ? separator : "";
+  const segments = pathText.split(/[\\/]+/).filter(Boolean);
+  if (segments.length === 0) return truncateToWidth(pathText, columns, "…");
+  const prefixLength = pathPrefixLength(segments);
+  const tailStart = Math.max(prefixLength, segments.length - 2);
+  const compactSegments = segments.map((segment, index) => (
+    index >= prefixLength && index < tailStart ? abbreviatePathSegment(segment) : segment
+  ));
+  const compactPath = `${root}${compactSegments.join(separator)}`;
+  if (visibleWidth(compactPath) <= columns) return compactPath;
+  let best = truncateToWidth(segments.at(-1) || compactPath, columns, "…");
+  for (let index = compactSegments.length - 1; index >= 0; index--) {
+    const candidate = `…${separator}${compactSegments.slice(index).join(separator)}`;
+    if (visibleWidth(candidate) > columns) break;
+    best = candidate;
+  }
+  return best;
+}
 function parseGitStatus(output) {
   const state = {
     available: true,
@@ -1303,6 +1343,7 @@ function piChocoDashboard(pi: ExtensionAPI) {
         render(width) {
           const relaxed = width >= 120;
           const divider = theme.fg("borderMuted", " \xB7 ");
+          const displayedCwd = compactPathForWidth(ctx.cwd, width - (relaxed ? 4 : 0));
           const line1 = [];
           const line2 = [];
           const line3 = [];
@@ -1347,7 +1388,7 @@ function piChocoDashboard(pi: ExtensionAPI) {
               line2.push(`${theme.fg("dim", "\u{1F4C1}")} ${theme.fg("syntaxString", theme.bold(basename(ctx.cwd)))}`);
             }
             if (config.footer.showFullCwd) {
-              line2.push(`${theme.fg("dim", "cwd ")}${theme.fg("dim", ctx.cwd)}`);
+              line2.push(`${theme.fg("dim", "cwd ")}${theme.fg("dim", displayedCwd)}`);
             }
             if (config.footer.showGitWorktree) {
               line2.push(`${theme.fg("dim", "git ")}${styledGitText(gitState, config, theme, true)}`);
@@ -1359,7 +1400,7 @@ function piChocoDashboard(pi: ExtensionAPI) {
             if (config.footer.showProjectName) {
               line2.push(theme.fg("syntaxString", theme.bold(basename(ctx.cwd))));
             }
-            if (config.footer.showFullCwd) line2.push(theme.fg("dim", ctx.cwd));
+            if (config.footer.showFullCwd) line2.push(theme.fg("dim", displayedCwd));
             if (config.footer.showGitWorktree) {
               line2.push(`${theme.fg("dim", "git ")}${styledGitText(gitState, config, theme, true)}`);
             }
@@ -1858,6 +1899,7 @@ function piChocoDashboard(pi: ExtensionAPI) {
   });
 }
 export {
+  compactPathForWidth,
   extensionStatusGroups,
   packFooterParts,
   piChocoDashboard as default
