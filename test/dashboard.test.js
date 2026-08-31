@@ -2,10 +2,13 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
+import { visibleWidth } from "@earendil-works/pi-tui";
+
 import piChocoDashboard, {
   compactPathForWidth,
   extensionStatusGroups,
   packFooterParts,
+  packGroupedExtensionStatus,
 } from "../extensions/dashboard.ts";
 
 function createDashboardHarness() {
@@ -86,7 +89,9 @@ test("dashboard source keeps compact footer hierarchy and field-aware statuses",
   assert.match(source, /\)}K`/);
   assert.doesNotMatch(source, /"work "/);
   assert.match(source, /status\.split\(\/\\r\?\\n\//);
-  assert.match(source, /extensionStatusGroups\(footerData\.getExtensionStatuses\(\)\)/);
+  assert.match(source, /const extensionStatuses = footerData\.getExtensionStatuses\(\)/);
+  assert.match(source, /extensionStatusGroups\(extensionStatuses\)/);
+  assert.match(source, /packGroupedExtensionStatus\(parts, width, divider\)/);
   assert.match(source, /packFooterParts\(parts, width, divider\)/);
   assert.match(source, /const MINIMAL_FOOTER_WIDTH = 60/);
   assert.match(source, /const minimal = width < MINIMAL_FOOTER_WIDTH/);
@@ -109,6 +114,21 @@ test("footer packing moves whole fields instead of splitting them", () => {
     packFooterParts(["Weyaw Rust", "MCP 1/1"], 19, " · "),
     ["Weyaw Rust", "MCP 1/1"],
   );
+});
+
+test("footer truncates only the Weyaw task id before AGT and MCP", () => {
+  const parts = [
+    "TSK-20260830-1940-portable-artifact-closure-cut-over · 2 AGT",
+    "MCP 1/1",
+  ];
+  const [row] = packGroupedExtensionStatus(parts, 32, " · ");
+
+  assert.equal(visibleWidth(row), 32);
+  assert.equal(row.endsWith(" · 2 AGT · MCP 1/1"), true);
+  assert.equal(row.startsWith("TSK-20260830-"), true);
+  assert.deepEqual(packGroupedExtensionStatus(parts, 17, " · ").slice(1), [
+    "2 AGT · MCP 1/1",
+  ]);
 });
 
 test("footer uses stable segment abbreviations for narrow paths", () => {
@@ -140,6 +160,14 @@ test("footer groups Weyaw and MCP while preserving other status lines", () => {
     ["Weyaw Rust", "MCP 1/1"],
     ["ready"],
     ["idle"],
+  ]);
+  assert.deepEqual(extensionStatusGroups(new Map([
+    ["other", "ready"],
+    ["weyaw", "Weyaw Rust"],
+    ["mcp", "MCP 1/1"],
+  ])), [
+    ["ready"],
+    ["Weyaw Rust", "MCP 1/1"],
   ]);
 });
 

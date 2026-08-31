@@ -33,6 +33,7 @@ const CONFIG_FILE = "pi-choco-setting.json";
 const BUNDLED_CONFIG_FILE = fileURLToPath(new URL("../pi-choco-setting.json", import.meta.url));
 const MINIMAL_FOOTER_WIDTH = 60;
 const GROUPED_EXTENSION_STATUS_KEYS = new Set(["weyaw", "mcp"]);
+const WEYAW_TASK_STATUS_PATTERN = /^(TSK-\d{8}-\d{4}-[A-Za-z0-9][A-Za-z0-9-]*) · (\d+ AGT)$/;
 const EMPTY_USAGE = {
   input: 0,
   output: 0,
@@ -434,6 +435,18 @@ function extensionStatusGroups(statuses) {
   }
   return groups;
 }
+function groupedExtensionStatusIndex(statuses) {
+  const hasGroupedStatus = [...GROUPED_EXTENSION_STATUS_KEYS]
+    .some((key) => footerStatusLines(statuses.get(key)).length > 0);
+  if (!hasGroupedStatus) return -1;
+
+  let index = 0;
+  for (const [key, status] of statuses) {
+    if (GROUPED_EXTENSION_STATUS_KEYS.has(key)) return index;
+    index += footerStatusLines(status).length;
+  }
+  return -1;
+}
 function packFooterParts(parts, width, divider) {
   const columns = Number.isFinite(width) ? Math.max(1, Math.trunc(width)) : 1;
   const rows = [];
@@ -450,6 +463,24 @@ function packFooterParts(parts, width, divider) {
   }
   if (row) rows.push(truncateToWidth(row, columns, "…"));
   return rows;
+}
+function packGroupedExtensionStatus(parts, width, divider) {
+  const match = parts[0]?.match(WEYAW_TASK_STATUS_PATTERN);
+  if (!match) return packFooterParts(parts, width, divider);
+
+  const columns = Number.isFinite(width) ? Math.max(1, Math.trunc(width)) : 1;
+  const title = match[1];
+  const tailParts = [match[2], ...parts.slice(1)]
+    .filter((part) => typeof part === "string" && visibleWidth(part) > 0);
+  const tail = tailParts.join(divider);
+  const titleBudget = columns - visibleWidth(tail) - visibleWidth(divider);
+  if (titleBudget > 0) {
+    return [`${truncateToWidth(title, titleBudget, "…")}${divider}${tail}`];
+  }
+  return [
+    truncateToWidth(title, columns, "…"),
+    ...packFooterParts(tailParts, columns, divider)
+  ];
 }
 function pathPrefixLength(segments) {
   if (
@@ -1413,9 +1444,11 @@ function piChocoDashboard(pi: ExtensionAPI) {
             line4.push(`${phase}${elapsed}`);
           }
           if (!minimal && config.footer.showClock) line4.push(formatAbsolute(Date.now(), config));
+          const extensionStatuses = footerData.getExtensionStatuses();
           const extensionGroups = config.footer.showExtensionStatuses
-            ? extensionStatusGroups(footerData.getExtensionStatuses())
+            ? extensionStatusGroups(extensionStatuses)
             : [];
+          const groupedExtensionIndex = groupedExtensionStatusIndex(extensionStatuses);
           const visibleLines = [line1];
           if (config.footer.line2Visible) visibleLines.push(line2);
           if (config.footer.line3Visible) visibleLines.push(line3);
@@ -1426,7 +1459,11 @@ function piChocoDashboard(pi: ExtensionAPI) {
           const dashboardRows = visibleLines
             .filter((parts) => parts.length > 0)
             .flatMap(renderParts);
-          const statusRows = extensionGroups.flatMap(renderParts);
+          const statusRows = extensionGroups.flatMap((parts, index) => (
+            index === groupedExtensionIndex
+              ? packGroupedExtensionStatus(parts, width, divider)
+              : renderParts(parts)
+          ));
           return [...dashboardRows, ...statusRows];
         },
         dispose() {
@@ -1904,5 +1941,6 @@ export {
   compactPathForWidth,
   extensionStatusGroups,
   packFooterParts,
+  packGroupedExtensionStatus,
   piChocoDashboard as default
 };
