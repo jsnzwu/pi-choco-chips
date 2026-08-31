@@ -31,7 +31,7 @@ const TITLE_STATE_TYPE = "pi-choco-chips.dashboard.title-state";
 const SKILL_BUNDLE_TYPE = "pi-choco-chips.skill-bundle";
 const CONFIG_FILE = "pi-choco-setting.json";
 const BUNDLED_CONFIG_FILE = fileURLToPath(new URL("../pi-choco-setting.json", import.meta.url));
-const MINIMAL_FOOTER_WIDTH = 60;
+const DETAIL_FOOTER_WIDTH = 100;
 const GROUPED_EXTENSION_STATUS_KEYS = new Set(["weyaw", "mcp"]);
 const WEYAW_TASK_STATUS_PATTERN = /^(TSK-\d{8}-\d{4}-[A-Za-z0-9][A-Za-z0-9-]*) · (\d+ AGT)$/;
 const EMPTY_USAGE = {
@@ -1373,10 +1373,9 @@ function piChocoDashboard(pi: ExtensionAPI) {
         invalidate() {
         },
         render(width) {
-          const relaxed = width >= 120;
-          const minimal = width < MINIMAL_FOOTER_WIDTH;
+          const detail = width >= DETAIL_FOOTER_WIDTH;
           const divider = theme.fg("borderMuted", " \xB7 ");
-          const displayedCwd = compactPathForWidth(ctx.cwd, width - (relaxed ? 4 : 0), minimal);
+          const displayedCwd = compactPathForWidth(ctx.cwd, width - (detail ? 4 : 0), !detail);
           const line1 = [];
           const line2 = [];
           const line3 = [];
@@ -1392,7 +1391,7 @@ function piChocoDashboard(pi: ExtensionAPI) {
             const thinking = config.footer.showThinkingLevel ? `\xB7${currentThinking}` : "";
             line1.push(thinkingColor(theme.bold(`${model}${thinking}`)));
           }
-          if (!minimal && contextPercent !== void 0) {
+          if (detail && contextPercent !== void 0) {
             const contextParts = [contextPercent];
             if (context) contextParts.push(formatTokens(context.contextWindow));
             if (config.footer.showCacheUsage) {
@@ -1401,7 +1400,7 @@ function piChocoDashboard(pi: ExtensionAPI) {
             }
             line1.push(theme.fg("muted", contextParts.join("/")));
           }
-          if (!minimal) line1.push(theme.fg("muted", formatDuration(currentForegroundWorkMs())));
+          if (detail) line1.push(theme.fg("muted", formatDuration(currentForegroundWorkMs())));
           const modelUsageParts = [];
           if (config.footer.showResponseUsage) modelUsageParts.push(footerUsageText("RESP", lastResponse?.usage, theme));
           if (config.footer.showTurnUsage) modelUsageParts.push(footerUsageText("TURN", request?.usage || lastTurn?.usage, theme));
@@ -1416,7 +1415,7 @@ function piChocoDashboard(pi: ExtensionAPI) {
           } else if (config.footer.showTurnNumber) {
             modelUsageParts.push(`${theme.fg("muted", "turn ")}${theme.fg("muted", String(currentTurn))}`);
           }
-          if (relaxed) {
+          if (detail) {
             if (config.footer.showProjectName) {
               line2.push(`${theme.fg("dim", "\u{1F4C1}")} ${theme.fg("syntaxString", theme.bold(basename(ctx.cwd)))}`);
             }
@@ -1429,21 +1428,14 @@ function piChocoDashboard(pi: ExtensionAPI) {
             if (modelUsageParts.length) {
               line3.push(`${theme.fg("dim", "usage ")}${modelUsageParts.join(" ")}`);
             }
-          } else {
-            if (!minimal && config.footer.showProjectName) {
-              line2.push(theme.fg("syntaxString", theme.bold(basename(ctx.cwd))));
-            }
-            if (config.footer.showFullCwd) line2.push(theme.fg("dim", displayedCwd));
-            if (!minimal && config.footer.showGitWorktree) {
-              line2.push(`${theme.fg("dim", "git ")}${styledGitText(gitState, config, theme, true)}`);
-            }
-            if (!minimal && modelUsageParts.length) line3.push(modelUsageParts.join(" "));
+          } else if (config.footer.showFullCwd) {
+            line2.push(theme.fg("dim", displayedCwd));
           }
-          if (!minimal && config.footer.showRuntimePhase) {
+          if (detail && config.footer.showRuntimePhase) {
             const elapsed = phase === "Ready" ? "" : ` ${formatDuration(performance.now() - phaseStartedMono)}`;
             line4.push(`${phase}${elapsed}`);
           }
-          if (!minimal && config.footer.showClock) line4.push(formatAbsolute(Date.now(), config));
+          if (detail && config.footer.showClock) line4.push(formatAbsolute(Date.now(), config));
           const extensionStatuses = footerData.getExtensionStatuses();
           const extensionGroups = config.footer.showExtensionStatuses
             ? extensionStatusGroups(extensionStatuses)
