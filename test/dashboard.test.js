@@ -93,11 +93,13 @@ test("dashboard source keeps compact footer hierarchy and field-aware statuses",
   assert.match(source, /extensionStatusGroups\(extensionStatuses\)/);
   assert.match(source, /packGroupedExtensionStatus\(parts, width, divider\)/);
   assert.match(source, /packFooterParts\(parts, width, divider\)/);
-  assert.match(source, /const MINIMAL_FOOTER_WIDTH = 60/);
-  assert.match(source, /const minimal = width < MINIMAL_FOOTER_WIDTH/);
-  assert.match(source, /compactPathForWidth\(ctx\.cwd, width - \(relaxed \? 4 : 0\), minimal\)/);
-  assert.match(source, /if \(!minimal && contextPercent !== void 0\)/);
-  assert.match(source, /if \(!minimal && config\.footer\.showGitWorktree\)/);
+  assert.match(source, /const DETAIL_FOOTER_WIDTH = 100/);
+  assert.match(source, /const detail = width >= DETAIL_FOOTER_WIDTH/);
+  assert.match(source, /compactPathForWidth\(ctx\.cwd, width - \(detail \? 4 : 0\), !detail\)/);
+  assert.match(source, /if \(detail && contextPercent !== void 0\)/);
+  assert.match(source, /if \(detail && config\.footer\.showRuntimePhase\)/);
+  assert.match(source, /else if \(config\.footer\.showFullCwd\)/);
+  assert.doesNotMatch(source, /MINIMAL_FOOTER_WIDTH|const minimal =|const relaxed =/);
   assert.match(source, /return \[\.\.\.dashboardRows, \.\.\.statusRows\]/);
 });
 
