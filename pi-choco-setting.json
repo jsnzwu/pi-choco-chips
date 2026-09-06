@@ -1,5 +1,9 @@
 {
   "version": 1,
+  "compaction": {
+    "triggerPercent": 80,
+    "maxTokens": 300000
+  },
   "dashboard": {
     "version": 1,
     "enabled": true,

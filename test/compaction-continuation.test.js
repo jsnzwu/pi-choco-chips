@@ -1,12 +1,17 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import {
   COMPACTION_CONTINUATION_TYPE,
   createCompactionContinuation,
   createEarlyCompactionContinuation,
-  EARLY_COMPACTION_PERCENT,
+  DEFAULT_COMPACTION_CONFIG,
   findAssistantBeforeCompaction,
+  loadCompactionConfig,
   shouldCompactBeforeProvider,
 } from "../extensions/compaction-continuation.ts";
 
@@ -61,7 +66,102 @@ test("starts early compaction before the next oversized provider request", () =>
     ),
     true,
   );
-  assert.equal(EARLY_COMPACTION_PERCENT, 80);
+  assert.equal(DEFAULT_COMPACTION_CONFIG.triggerPercent, 80);
+});
+
+test("caps the trigger at an absolute token ceiling on million-token windows", () => {
+  const state = {
+    enabled: true,
+    agentActive: true,
+    compactionInFlight: false,
+    hasPendingMessages: false,
+  };
+
+  assert.equal(DEFAULT_COMPACTION_CONFIG.maxTokens, 300_000);
+  assert.equal(
+    shouldCompactBeforeProvider(
+      { tokens: 300_000, contextWindow: 872_000, percent: 34.4 },
+      state,
+    ),
+    true,
+  );
+  assert.equal(
+    shouldCompactBeforeProvider(
+      { tokens: 299_000, contextWindow: 872_000, percent: 34.3 },
+      state,
+    ),
+    false,
+  );
+  // Windows below ~375K still trigger on the percentage, not the ceiling.
+  assert.equal(
+    shouldCompactBeforeProvider(
+      { tokens: 297_600, contextWindow: 372_000, percent: 80 },
+      state,
+    ),
+    true,
+  );
+  // An explicit setting overrides both defaults.
+  assert.equal(
+    shouldCompactBeforeProvider(
+      { tokens: 500_000, contextWindow: 872_000, percent: 57.3 },
+      { ...state, triggerPercent: 90, maxTokens: 600_000 },
+    ),
+    false,
+  );
+});
+
+function withAgentDir(files, run) {
+  const dir = mkdtempSync(join(tmpdir(), "pi-choco-chips-"));
+  const previous = process.env.PI_CODING_AGENT_DIR;
+  process.env.PI_CODING_AGENT_DIR = dir;
+  try {
+    for (const [name, content] of Object.entries(files)) {
+      writeFileSync(join(dir, name), content, "utf8");
+    }
+    return run();
+  } finally {
+    if (previous === undefined) delete process.env.PI_CODING_AGENT_DIR;
+    else process.env.PI_CODING_AGENT_DIR = previous;
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+test("reads the compaction trigger from pi-choco-setting.json", () => {
+  const loaded = withAgentDir(
+    {
+      "pi-choco-setting.json": JSON.stringify({
+        version: 1,
+        compaction: { maxTokens: 450_000 },
+      }),
+    },
+    loadCompactionConfig,
+  );
+
+  assert.equal(loaded.error, undefined);
+  // The user file overrides only maxTokens; triggerPercent keeps the default.
+  assert.deepEqual(loaded.config, { triggerPercent: 80, maxTokens: 450_000 });
+});
+
+test("falls back to the bundled defaults with no user setting file", () => {
+  const loaded = withAgentDir({}, loadCompactionConfig);
+
+  assert.equal(loaded.error, undefined);
+  assert.deepEqual(loaded.config, DEFAULT_COMPACTION_CONFIG);
+});
+
+test("reports an invalid compaction value and keeps the other field", () => {
+  const loaded = withAgentDir(
+    {
+      "pi-choco-setting.json": JSON.stringify({
+        version: 1,
+        compaction: { triggerPercent: 150, maxTokens: 250_000 },
+      }),
+    },
+    loadCompactionConfig,
+  );
+
+  assert.match(loaded.error, /triggerPercent/);
+  assert.deepEqual(loaded.config, { triggerPercent: 80, maxTokens: 250_000 });
 });
 
 test("does not overlap early compaction or race queued messages", () => {
