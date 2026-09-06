@@ -1,6 +1,16 @@
+import { loadSection } from "./settings.ts";
+
 export const COMPACTION_CONTINUATION_TYPE =
   "pi-choco-chips.compaction-continuation";
-export const EARLY_COMPACTION_PERCENT = 80;
+// Both values are overridable through the `compaction` section of
+// `pi-choco-setting.json`. `maxTokens` is an absolute ceiling on the percentage
+// trigger: million-token windows make 80% land past the point where prompt
+// size, latency, and cost stop being useful, so the ceiling binds first for
+// those models and stays inert below `maxTokens / (percent / 100)`.
+export const DEFAULT_COMPACTION_CONFIG = {
+  triggerPercent: 80,
+  maxTokens: 300_000,
+};
 export const EARLY_COMPACTION_INSTRUCTIONS =
   "Preserve the active task, completed work, pending tool results, exact next step, " +
   "and any files or commands needed to continue immediately after compaction.";
@@ -44,8 +54,42 @@ export function shouldCompactBeforeProvider(contextUsage, state = {}) {
     return false;
   }
 
-  const triggerPercent = state.triggerPercent ?? EARLY_COMPACTION_PERCENT;
-  return contextUsage.tokens >= contextUsage.contextWindow * (triggerPercent / 100);
+  const triggerPercent = state.triggerPercent ?? DEFAULT_COMPACTION_CONFIG.triggerPercent;
+  const maxTokens = state.maxTokens ?? DEFAULT_COMPACTION_CONFIG.maxTokens;
+  const triggerTokens = Math.min(
+    contextUsage.contextWindow * (triggerPercent / 100),
+    maxTokens,
+  );
+  return contextUsage.tokens >= triggerTokens;
+}
+
+function positiveNumber(value, max) {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return null;
+  if (max !== undefined && value > max) return null;
+  return value;
+}
+
+// Invalid entries fall back to the default for that field alone and are
+// reported, so one bad value never disables early compaction outright.
+export function loadCompactionConfig() {
+  const { config, error } = loadSection("compaction", DEFAULT_COMPACTION_CONFIG);
+  const errors = error ? [error] : [];
+
+  const triggerPercent = positiveNumber(config.triggerPercent, 100);
+  if (triggerPercent === null) {
+    errors.push("compaction.triggerPercent must be a number in (0, 100]");
+  }
+
+  const maxTokens = positiveNumber(config.maxTokens);
+  if (maxTokens === null) {
+    errors.push("compaction.maxTokens must be a positive number");
+  }
+
+  const resolved = {
+    triggerPercent: triggerPercent ?? DEFAULT_COMPACTION_CONFIG.triggerPercent,
+    maxTokens: maxTokens ?? DEFAULT_COMPACTION_CONFIG.maxTokens,
+  };
+  return errors.length ? { config: resolved, error: errors.join("; ") } : { config: resolved };
 }
 
 export function createEarlyCompactionContinuation(contextUsage, compactionResult) {

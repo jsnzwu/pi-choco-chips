@@ -9,7 +9,7 @@ Post-start enhancements for [pi](https://pi.dev), packaged as ordinary Pi extens
 - `/dashboard` — open a TUI settings page that toggles footer lines 2 and 3 and persists the choice.
 - Compact transcript spacing and Bash command styling with runtime Pi capability detection. Unsupported internals disable only the affected feature and emit a warning.
 - `/retitle` — generate a concise title from the current session.
-- Compact at 80% context before the next provider request, then resume the active turn automatically. Manual or threshold compaction after an assistant error also resumes; completed responses, Pi's overflow retry, and queued user messages are left alone.
+- Compact at 80% context or 300K tokens, whichever comes first, before the next provider request, then resume the active turn automatically. Both numbers are settings, not constants; see [Compaction settings](#compaction-settings). Manual or threshold compaction after an assistant error also resumes; completed responses, Pi's overflow retry, and queued user messages are left alone.
 - Multiple `/skill:name` or `$skill-name` references in one prompt, delivered as one ordered custom message.
 - Skill completion after `/skill:` or `$` anywhere in the current prompt.
 - Consistent composer controls: Enter submits or steers an active turn, Alt+Enter queues a follow-up, and Shift+Enter inserts a newline. Ctrl+J remains the terminal-safe newline fallback.
@@ -25,7 +25,7 @@ The package ships defaults in [`pi-choco-setting.json`](pi-choco-setting.json). 
 ~/.pi/agent/pi-choco-setting.json
 ```
 
-or place the file under `PI_CODING_AGENT_DIR` when that environment variable is set. Dashboard settings live under the `dashboard` key:
+or place the file under `PI_CODING_AGENT_DIR` when that environment variable is set. Each feature owns one top-level key. Dashboard settings live under the `dashboard` key:
 
 ```json
 {
@@ -44,6 +44,27 @@ or place the file under `PI_CODING_AGENT_DIR` when that environment variable is 
 ```
 
 User settings are deep-merged over the bundled defaults. The footer uses one responsive breakpoint: compact presentation below 100 columns and detail presentation at 100 columns or above. Compact presentation keeps title/model, a forced compact path, and extension statuses while hiding context/cache/time metrics, the redundant project name, Git status, usage, phase, and clock. Detail presentation restores those configured metrics and uses labeled `📁`, `cwd`, `git`, and `usage` fields. Footer line 3, which contains detailed token/cache/cost usage in detail presentation, is hidden by default and remains available through `/dashboard`. The footer packs complete fields onto each row and moves fields that do not fit to the next row instead of splitting them across lines. Compact paths use stable segment abbreviations without filesystem reads: important roots and the final two directories stay complete, while middle directories use initials (`Documents/work-src` becomes `D/w-s`); if that still does not fit, the earliest segments collapse behind `…`. Weyaw publishes task status as `<canonical-task-id> · <visible-count> AGT`. The dashboard groups the `weyaw` and `mcp` keys as `<truncated-task-id> · <visible-count> AGT · MCP`, reserves the AGT/MCP suffix, and truncates only the task id by terminal display cells when the combined row is long. If the marker fields themselves cannot share one row, normal whole-field wrapping keeps their order without splitting a marker. Project-only Weyaw text and multiline or unrelated extension statuses retain the generic bounded packing behavior. Restart Pi after dashboard rendering or settings changes because the footer and compact transcript components are installed once per process.
+
+### Compaction settings
+
+Early compaction lives under the `compaction` key of the same file:
+
+```json
+{
+  "version": 1,
+  "compaction": {
+    "triggerPercent": 80,
+    "maxTokens": 300000
+  }
+}
+```
+
+| Key | Default | Meaning |
+| --- | ---: | --- |
+| `triggerPercent` | `80` | Percentage of the model's context window at which to compact. Must be in `(0, 100]`. |
+| `maxTokens` | `300000` | Absolute token ceiling on that percentage. Must be positive. |
+
+The effective trigger is `min(contextWindow × triggerPercent / 100, maxTokens)`, so the ceiling only binds on windows above `maxTokens / (triggerPercent / 100)` — about 375K at the defaults. A 872K window compacts at 300K, while a 372K window still compacts at 297.6K on the percentage alone. Either key can be set on its own; the other keeps its default. An out-of-range value falls back to the default for that key, and the session warns once instead of silently disabling early compaction. `/choco` reports the resolved pair as `compact-at=<percent>%/<maxTokens>`. Settings are read at extension registration, so restart Pi after changing them.
 
 ## Commands and skill references
 

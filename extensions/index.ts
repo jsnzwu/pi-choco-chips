@@ -16,6 +16,7 @@ import {
   createCompactionContinuation,
   createEarlyCompactionContinuation,
   EARLY_COMPACTION_INSTRUCTIONS,
+  loadCompactionConfig,
   shouldCompactBeforeProvider,
 } from "./compaction-continuation.ts";
 import { extractSkillToken, makeSkillBundle } from "./skill-references.ts";
@@ -66,13 +67,14 @@ function getSkillMap(pi) {
   return skills;
 }
 
-function featureStatus(features, pi, ctx) {
+function featureStatus(features, pi, ctx, compaction) {
   const editor = ctx?.ui.getEditorComponent?.() ? "custom" : "default";
   return [
     `retitle=${features.retitle ? "on" : "off"}`,
     `multi-skill=${features.multiSkill ? "on" : "off"}`,
     `autocomplete=${features.autocomplete ? "on" : "off"}`,
     `compact-resume=${features.compactionContinuation ? "on" : "off"}`,
+    `compact-at=${compaction.triggerPercent}%/${compaction.maxTokens}`,
     `skills=${pi ? getSkillMap(pi).size : 0}`,
     `editor=${editor}`,
   ].join(" ");
@@ -349,10 +351,12 @@ class SkillEditor extends CustomEditor {
 
 export default function piChocoChips(pi: ExtensionAPI) {
   const features = { ...DEFAULT_FEATURES };
+  const compaction = loadCompactionConfig();
   const pendingBundleTimers = new Set();
   let editorFactory;
   let restoreComposerKeybindings;
   let earlyCompactionInFlight = false;
+  let reportedCompactionConfigError = false;
 
   pi.registerCommand("retitle", {
     description: "Generate a new title from the current session",
@@ -382,7 +386,7 @@ export default function piChocoChips(pi: ExtensionAPI) {
       }
 
       if (first === "status") {
-        notify(ctx, `Pi Choco Chips: ${featureStatus(features, pi, ctx)}`);
+        notify(ctx, `Pi Choco Chips: ${featureStatus(features, pi, ctx, compaction.config)}`);
         return;
       }
 
@@ -415,7 +419,7 @@ export default function piChocoChips(pi: ExtensionAPI) {
       }
 
       saveFeatures(pi, features);
-      notify(ctx, `Pi Choco Chips: ${featureStatus(features, pi, ctx)}`);
+      notify(ctx, `Pi Choco Chips: ${featureStatus(features, pi, ctx, compaction.config)}`);
     },
   });
 
@@ -455,6 +459,11 @@ export default function piChocoChips(pi: ExtensionAPI) {
   pi.on("context", (_event, ctx) => {
     if (earlyCompactionInFlight) return;
 
+    if (compaction.error && !reportedCompactionConfigError) {
+      reportedCompactionConfigError = true;
+      notify(ctx, `Compaction setting fell back to defaults: ${compaction.error}`, "warning");
+    }
+
     const contextUsage = ctx.getContextUsage();
     if (
       !shouldCompactBeforeProvider(contextUsage, {
@@ -462,6 +471,8 @@ export default function piChocoChips(pi: ExtensionAPI) {
         agentActive: !ctx.isIdle(),
         compactionInFlight: earlyCompactionInFlight,
         hasPendingMessages: ctx.hasPendingMessages(),
+        triggerPercent: compaction.config.triggerPercent,
+        maxTokens: compaction.config.maxTokens,
       })
     ) {
       return;

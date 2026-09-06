@@ -23,14 +23,11 @@ import {
 import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { basename, dirname, join, resolve } from "node:path";
-import { homedir } from "node:os";
-import { fileURLToPath } from "node:url";
+import { agentDir, CONFIG_FILE, loadSection } from "./settings.ts";
 const META_TYPE = "pi-choco-chips.dashboard.meta";
 const TOOL_TIMING_TYPE = "pi-choco-chips.dashboard.tool-timing";
 const TITLE_STATE_TYPE = "pi-choco-chips.dashboard.title-state";
 const SKILL_BUNDLE_TYPE = "pi-choco-chips.skill-bundle";
-const CONFIG_FILE = "pi-choco-setting.json";
-const BUNDLED_CONFIG_FILE = fileURLToPath(new URL("../pi-choco-setting.json", import.meta.url));
 const DETAIL_FOOTER_WIDTH = 100;
 const GROUPED_EXTENSION_STATUS_KEYS = new Set(["weyaw", "mcp"]);
 const WEYAW_TASK_STATUS_PATTERN = /^(TSK-\d{8}-\d{4}-[A-Za-z0-9][A-Za-z0-9-]*) · (\d+ AGT)$/;
@@ -159,53 +156,8 @@ const DEFAULT_CONFIG = {
     reloadRequiredAfterConfigChange: true
   }
 };
-function agentDir() {
-  return process.env.PI_CODING_AGENT_DIR || join(homedir(), ".pi", "agent");
-}
-function deepMerge(base, overlay) {
-  if (!overlay || typeof overlay !== "object" || Array.isArray(overlay)) return base;
-  const result = { ...base };
-  for (const [key, value] of Object.entries(overlay)) {
-    const current = result[key];
-    if (current && typeof current === "object" && !Array.isArray(current) && value && typeof value === "object" && !Array.isArray(value)) {
-      result[key] = deepMerge(current, value);
-    } else {
-      result[key] = value;
-    }
-  }
-  return result;
-}
-function readDashboardOverlay(path) {
-  const parsed = JSON.parse(readFileSync(path, "utf8"));
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw new Error("root setting must be an object");
-  }
-  const dashboard = parsed.dashboard;
-  if (!dashboard || typeof dashboard !== "object" || Array.isArray(dashboard)) {
-    throw new Error("dashboard setting must be an object");
-  }
-  return dashboard;
-}
 function loadConfig() {
-  let config = DEFAULT_CONFIG;
-  const errors = [];
-  try {
-    config = deepMerge(config, readDashboardOverlay(BUNDLED_CONFIG_FILE));
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    errors.push(`${BUNDLED_CONFIG_FILE}: ${message}`);
-  }
-  const path = join(agentDir(), CONFIG_FILE);
-  try {
-    config = deepMerge(config, readDashboardOverlay(path));
-  } catch (error) {
-    const code = error.code;
-    if (code !== "ENOENT") {
-      const message = error instanceof Error ? error.message : String(error);
-      errors.push(`${path}: ${message}`);
-    }
-  }
-  return errors.length ? { config, error: errors.join("; ") } : { config };
+  return loadSection("dashboard", DEFAULT_CONFIG);
 }
 function writeDashboardConfig(config) {
   const path = join(agentDir(), CONFIG_FILE);
