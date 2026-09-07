@@ -65,6 +65,7 @@ Early compaction lives under the `compaction` key of the same file:
 | `maxTokens` | `300000` | Absolute token ceiling on that percentage. Must be positive. |
 
 The effective trigger is `min(contextWindow × triggerPercent / 100, maxTokens)`, so the ceiling only binds on windows above `maxTokens / (triggerPercent / 100)` — about 375K at the defaults. A 872K window compacts at 300K, while a 372K window still compacts at 297.6K on the percentage alone. Either key can be set on its own; the other keeps its default. An out-of-range value falls back to the default for that key, and the session warns once instead of silently disabling early compaction. `/choco` reports the resolved pair as `compact-at=<percent>%/<maxTokens>`. Settings are read at extension registration, so restart Pi after changing them.
+When `pi-mcp-adapter` publishes its versioned status snapshot, the footer appends the configured server names after its unchanged MCP indicator, for example `MCP 1/1 · weyaw-agents`. Each name is a separate field using the same width-bounded packing; disabled servers are labeled `(disabled)`. Names identify configured servers, not additional connection or readiness claims. Without a snapshot the original indicator is preserved, and hiding the adapter's status also hides the names. PCC only observes the shared event bus: it does not read MCP configuration, connect servers, or change adapter settings.
 
 ## Commands and skill references
 

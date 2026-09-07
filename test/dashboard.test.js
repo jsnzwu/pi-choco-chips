@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import { visibleWidth } from "@earendil-works/pi-tui";
+import { createEventBus } from "@earendil-works/pi-coding-agent";
 
 import piChocoDashboard, {
   compactPathForWidth,
@@ -17,6 +18,7 @@ function createDashboardHarness() {
   const messageRenderers = new Map();
   const entryRenderers = new Map();
   const pi = {
+    events: createEventBus(),
     on(event, handler) {
       handlers.set(event, handler);
     },
@@ -90,7 +92,7 @@ test("dashboard source keeps compact footer hierarchy and field-aware statuses",
   assert.doesNotMatch(source, /"work "/);
   assert.match(source, /status\.split\(\/\\r\?\\n\//);
   assert.match(source, /const extensionStatuses = footerData\.getExtensionStatuses\(\)/);
-  assert.match(source, /extensionStatusGroups\(extensionStatuses\)/);
+  assert.match(source, /extensionStatusGroups\(extensionStatuses, mcpServerNames\)/);
   assert.match(source, /packGroupedExtensionStatus\(parts, width, divider\)/);
   assert.match(source, /packFooterParts\(parts, width, divider\)/);
   assert.match(source, /const DETAIL_FOOTER_WIDTH = 100/);
