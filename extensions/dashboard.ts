@@ -24,6 +24,7 @@ import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from
 import { createRequire } from "node:module";
 import { basename, dirname, join, resolve } from "node:path";
 import { agentDir, CONFIG_FILE, loadSection } from "./settings.ts";
+import { subscribeMcpServerNames } from "./mcp-status.ts";
 const META_TYPE = "pi-choco-chips.dashboard.meta";
 const TOOL_TIMING_TYPE = "pi-choco-chips.dashboard.tool-timing";
 const TITLE_STATE_TYPE = "pi-choco-chips.dashboard.title-state";
@@ -366,7 +367,7 @@ function footerStatusLines(status) {
   if (typeof status !== "string") return [];
   return status.split(/\r?\n/).map((row) => row.trim()).filter(Boolean);
 }
-function extensionStatusGroups(statuses) {
+function extensionStatusGroups(statuses, mcpServerNames = []) {
   const groups = [];
   let groupedStatusesAdded = false;
   for (const [key, status] of statuses) {
@@ -377,6 +378,7 @@ function extensionStatusGroups(statuses) {
         .map((groupedKey) => footerStatusLines(statuses.get(groupedKey)))
         .filter((lines) => lines.length > 0);
       const firstLines = groupedLines.map((lines) => lines[0]);
+      if (footerStatusLines(statuses.get("mcp")).length > 0) firstLines.push(...mcpServerNames);
       if (firstLines.length > 0) groups.push(firstLines);
       for (const lines of groupedLines) {
         groups.push(...lines.slice(1).map((line) => [line]));
@@ -969,6 +971,11 @@ function piChocoDashboard(pi: ExtensionAPI) {
   };
   let headerRender = () => {
   };
+  let mcpServerNames = [];
+  const unsubscribeMcpStatus = subscribeMcpServerNames(pi.events, (names) => {
+    mcpServerNames = names;
+    footerRender();
+  });
   let interval;
   let unsubscribeThinkingToggle;
   let gitRefreshTimer;
@@ -1390,7 +1397,7 @@ function piChocoDashboard(pi: ExtensionAPI) {
           if (detail && config.footer.showClock) line4.push(formatAbsolute(Date.now(), config));
           const extensionStatuses = footerData.getExtensionStatuses();
           const extensionGroups = config.footer.showExtensionStatuses
-            ? extensionStatusGroups(extensionStatuses)
+            ? extensionStatusGroups(extensionStatuses, mcpServerNames)
             : [];
           const groupedExtensionIndex = groupedExtensionStatusIndex(extensionStatuses);
           const visibleLines = [line1];
@@ -1850,6 +1857,8 @@ function piChocoDashboard(pi: ExtensionAPI) {
     }
   });
   pi.on("session_shutdown", (event, ctx) => {
+    unsubscribeMcpStatus();
+    mcpServerNames = [];
     stopForegroundWork();
     finalizeRequest();
     if (config.transcript.systemEvents.modelAndSession || config.transcript.systemEvents.extensionsAndSecurity) {
