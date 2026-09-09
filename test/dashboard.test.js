@@ -84,7 +84,6 @@ test("dashboard source keeps compact footer hierarchy and field-aware statuses",
   assert.match(source, /contextParts\.push\(formatTokens\(context\.contextWindow\)\)/);
   assert.match(source, /line1\.push\(theme\.fg\("muted", contextParts\.join\("\/"\)\)\)/);
   assert.match(source, /line1\.push\(theme\.fg\("muted", formatDuration\(currentForegroundWorkMs\(\)\)\)\)/);
-  assert.match(source, /if \(config\.footer\.showCacheUsage\) \{/);
   assert.match(source, /contextParts\.push\(cacheHitRate\)/);
   assert.match(source, /usageParts\(sessionUsage, config, theme, true, false\)/);
   assert.doesNotMatch(source, /sessionStartedMono|currentSessionMs/);
@@ -95,10 +94,12 @@ test("dashboard source keeps compact footer hierarchy and field-aware statuses",
   assert.match(source, /extensionStatusGroups\(extensionStatuses, mcpServerNames\)/);
   assert.match(source, /packGroupedExtensionStatus\(parts, width, divider\)/);
   assert.match(source, /packFooterParts\(parts, width, divider\)/);
-  assert.match(source, /const DETAIL_FOOTER_WIDTH = 100/);
+  assert.match(source, /const DETAIL_FOOTER_WIDTH = 60/);
   assert.match(source, /const detail = width >= DETAIL_FOOTER_WIDTH/);
   assert.match(source, /compactPathForWidth\(ctx\.cwd, width - \(detail \? 4 : 0\), !detail\)/);
-  assert.match(source, /if \(detail && contextPercent !== void 0\)/);
+  assert.match(source, /if \(contextPercent !== void 0\)/);
+  assert.match(source, /if \(detail && context\) contextParts\.push\(formatTokens\(context\.contextWindow\)\)/);
+  assert.match(source, /if \(detail && config\.footer\.showCacheUsage\)/);
   assert.match(source, /if \(detail && config\.footer\.showRuntimePhase\)/);
   assert.match(source, /else if \(config\.footer\.showFullCwd\)/);
   assert.doesNotMatch(source, /MINIMAL_FOOTER_WIDTH|const minimal =|const relaxed =/);

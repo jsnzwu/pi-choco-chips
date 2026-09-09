@@ -29,7 +29,7 @@ const META_TYPE = "pi-choco-chips.dashboard.meta";
 const TOOL_TIMING_TYPE = "pi-choco-chips.dashboard.tool-timing";
 const TITLE_STATE_TYPE = "pi-choco-chips.dashboard.title-state";
 const SKILL_BUNDLE_TYPE = "pi-choco-chips.skill-bundle";
-const DETAIL_FOOTER_WIDTH = 100;
+const DETAIL_FOOTER_WIDTH = 60;
 const GROUPED_EXTENSION_STATUS_KEYS = new Set(["weyaw", "mcp"]);
 const WEYAW_TASK_STATUS_PATTERN = /^(TSK-\d{8}-\d{4}-[A-Za-z0-9][A-Za-z0-9-]*) · (\d+ AGT)$/;
 const EMPTY_USAGE = {
@@ -1350,10 +1350,10 @@ function piChocoDashboard(pi: ExtensionAPI) {
             const thinking = config.footer.showThinkingLevel ? `\xB7${currentThinking}` : "";
             line1.push(thinkingColor(theme.bold(`${model}${thinking}`)));
           }
-          if (detail && contextPercent !== void 0) {
+          if (contextPercent !== void 0) {
             const contextParts = [contextPercent];
-            if (context) contextParts.push(formatTokens(context.contextWindow));
-            if (config.footer.showCacheUsage) {
+            if (detail && context) contextParts.push(formatTokens(context.contextWindow));
+            if (detail && config.footer.showCacheUsage) {
               const cacheHitRate = cacheHitRatePart(sessionUsage, theme, true);
               if (cacheHitRate) contextParts.push(cacheHitRate);
             }
