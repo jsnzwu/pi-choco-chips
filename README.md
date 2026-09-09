@@ -107,6 +107,13 @@ pi -e ./extensions/index.ts -e ./extensions/dashboard.ts
 
 After changing only shortcut logic, `/reload` is sufficient. After changing dashboard rendering or settings, restart Pi.
 
+## Privacy
+
+Use repository-relative paths or synthetic fixtures such as `/home/demo/project` in documentation, tests, and commit messages. Do not copy personal directory trees, real task identifiers, credentials, or private service addresses into public artifacts. Review Git author and committer email settings before publishing; use a hosting provider's noreply address if you do not want to publish a personal email. Deleting sensitive text in a later commit does not remove it from Git history.
+
+PCC is not a redaction layer. Its local UI can display working directories, Git branches, task identifiers, and configured MCP server names. Automatic title generation and `/retitle` send selected conversation text to the currently selected model; set `dashboard.title.autoGenerate` to `false` to disable automatic title generation. Review screenshots and exported sessions before sharing them.
+
+
 ## Package
 
 The package intentionally has no bundled runtime dependencies. Pi provides its core packages to extensions; the peer dependencies in `package.json` document the APIs used here.
