@@ -2,14 +2,12 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
-import { visibleWidth } from "@earendil-works/pi-tui";
 import { createEventBus } from "@earendil-works/pi-coding-agent";
 
 import piChocoDashboard, {
   compactPathForWidth,
   extensionStatusGroups,
   packFooterParts,
-  packGroupedExtensionStatus,
 } from "../extensions/dashboard.ts";
 
 function createDashboardHarness() {
@@ -91,8 +89,8 @@ test("dashboard source keeps compact footer hierarchy and field-aware statuses",
   assert.doesNotMatch(source, /"work "/);
   assert.match(source, /status\.split\(\/\\r\?\\n\//);
   assert.match(source, /const extensionStatuses = footerData\.getExtensionStatuses\(\)/);
-  assert.match(source, /extensionStatusGroups\(extensionStatuses, mcpServerNames\)/);
-  assert.match(source, /packGroupedExtensionStatus\(parts, width, divider\)/);
+  assert.match(source, /extensionStatusGroups\(extensionStatuses\)/);
+  assert.match(source, /extensionGroups\.flatMap\(renderParts\)/);
   assert.match(source, /packFooterParts\(parts, width, divider\)/);
   assert.match(source, /const DETAIL_FOOTER_WIDTH = 60/);
   assert.match(source, /const detail = width >= DETAIL_FOOTER_WIDTH/);
@@ -112,28 +110,13 @@ test("footer packing moves whole fields instead of splitting them", () => {
     ["title · model", "context"],
   );
   assert.deepEqual(
-    packFooterParts(["Weyaw Rust", "MCP 1/1"], 20, " · "),
-    ["Weyaw Rust · MCP 1/1"],
+    packFooterParts(["first", "second"], 14, " · "),
+    ["first · second"],
   );
   assert.deepEqual(
-    packFooterParts(["Weyaw Rust", "MCP 1/1"], 19, " · "),
-    ["Weyaw Rust", "MCP 1/1"],
+    packFooterParts(["first", "second"], 13, " · "),
+    ["first", "second"],
   );
-});
-
-test("footer truncates only the Weyaw task id before AGT and MCP", () => {
-  const parts = [
-    "TSK-20000101-0000-example-task-with-a-long-title · 2 AGT",
-    "MCP 1/1",
-  ];
-  const [row] = packGroupedExtensionStatus(parts, 32, " · ");
-
-  assert.equal(visibleWidth(row), 32);
-  assert.equal(row.endsWith(" · 2 AGT · MCP 1/1"), true);
-  assert.equal(row.startsWith("TSK-20000101-"), true);
-  assert.deepEqual(packGroupedExtensionStatus(parts, 17, " · ").slice(1), [
-    "2 AGT · MCP 1/1",
-  ]);
 });
 
 test("footer uses stable segment abbreviations for narrow paths", () => {
@@ -154,25 +137,16 @@ test("footer uses stable segment abbreviations for narrow paths", () => {
   );
 });
 
-test("footer groups Weyaw and MCP while preserving other status lines", () => {
+test("footer renders extension statuses without interpreting their keys", () => {
   const statuses = new Map([
-    ["weyaw", "Weyaw Rust"],
-    ["mcp", "MCP 1/1"],
-    ["other", "ready\nidle"],
+    ["first-extension", "ready\nidle"],
+    ["second-extension", "working"],
   ]);
 
   assert.deepEqual(extensionStatusGroups(statuses), [
-    ["Weyaw Rust", "MCP 1/1"],
     ["ready"],
     ["idle"],
-  ]);
-  assert.deepEqual(extensionStatusGroups(new Map([
-    ["other", "ready"],
-    ["weyaw", "Weyaw Rust"],
-    ["mcp", "MCP 1/1"],
-  ])), [
-    ["ready"],
-    ["Weyaw Rust", "MCP 1/1"],
+    ["working"],
   ]);
 });
 

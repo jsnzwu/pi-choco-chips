@@ -24,14 +24,11 @@ import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from
 import { createRequire } from "node:module";
 import { basename, dirname, join, resolve } from "node:path";
 import { agentDir, CONFIG_FILE, loadSection } from "./settings.ts";
-import { subscribeMcpServerNames } from "./mcp-status.ts";
 const META_TYPE = "pi-choco-chips.dashboard.meta";
 const TOOL_TIMING_TYPE = "pi-choco-chips.dashboard.tool-timing";
 const TITLE_STATE_TYPE = "pi-choco-chips.dashboard.title-state";
 const SKILL_BUNDLE_TYPE = "pi-choco-chips.skill-bundle";
 const DETAIL_FOOTER_WIDTH = 60;
-const GROUPED_EXTENSION_STATUS_KEYS = new Set(["weyaw", "mcp"]);
-const WEYAW_TASK_STATUS_PATTERN = /^(TSK-\d{8}-\d{4}-[A-Za-z0-9][A-Za-z0-9-]*) · (\d+ AGT)$/;
 const EMPTY_USAGE = {
   input: 0,
   output: 0,
@@ -367,39 +364,10 @@ function footerStatusLines(status) {
   if (typeof status !== "string") return [];
   return status.split(/\r?\n/).map((row) => row.trim()).filter(Boolean);
 }
-function extensionStatusGroups(statuses, mcpServerNames = []) {
-  const groups = [];
-  let groupedStatusesAdded = false;
-  for (const [key, status] of statuses) {
-    if (GROUPED_EXTENSION_STATUS_KEYS.has(key)) {
-      if (groupedStatusesAdded) continue;
-      groupedStatusesAdded = true;
-      const groupedLines = [...GROUPED_EXTENSION_STATUS_KEYS]
-        .map((groupedKey) => footerStatusLines(statuses.get(groupedKey)))
-        .filter((lines) => lines.length > 0);
-      const firstLines = groupedLines.map((lines) => lines[0]);
-      if (footerStatusLines(statuses.get("mcp")).length > 0) firstLines.push(...mcpServerNames);
-      if (firstLines.length > 0) groups.push(firstLines);
-      for (const lines of groupedLines) {
-        groups.push(...lines.slice(1).map((line) => [line]));
-      }
-      continue;
-    }
-    groups.push(...footerStatusLines(status).map((line) => [line]));
-  }
-  return groups;
-}
-function groupedExtensionStatusIndex(statuses) {
-  const hasGroupedStatus = [...GROUPED_EXTENSION_STATUS_KEYS]
-    .some((key) => footerStatusLines(statuses.get(key)).length > 0);
-  if (!hasGroupedStatus) return -1;
-
-  let index = 0;
-  for (const [key, status] of statuses) {
-    if (GROUPED_EXTENSION_STATUS_KEYS.has(key)) return index;
-    index += footerStatusLines(status).length;
-  }
-  return -1;
+function extensionStatusGroups(statuses) {
+  return [...statuses.values()].flatMap((status) => (
+    footerStatusLines(status).map((line) => [line])
+  ));
 }
 function packFooterParts(parts, width, divider) {
   const columns = Number.isFinite(width) ? Math.max(1, Math.trunc(width)) : 1;
@@ -417,24 +385,6 @@ function packFooterParts(parts, width, divider) {
   }
   if (row) rows.push(truncateToWidth(row, columns, "…"));
   return rows;
-}
-function packGroupedExtensionStatus(parts, width, divider) {
-  const match = parts[0]?.match(WEYAW_TASK_STATUS_PATTERN);
-  if (!match) return packFooterParts(parts, width, divider);
-
-  const columns = Number.isFinite(width) ? Math.max(1, Math.trunc(width)) : 1;
-  const title = match[1];
-  const tailParts = [match[2], ...parts.slice(1)]
-    .filter((part) => typeof part === "string" && visibleWidth(part) > 0);
-  const tail = tailParts.join(divider);
-  const titleBudget = columns - visibleWidth(tail) - visibleWidth(divider);
-  if (titleBudget > 0) {
-    return [`${truncateToWidth(title, titleBudget, "…")}${divider}${tail}`];
-  }
-  return [
-    truncateToWidth(title, columns, "…"),
-    ...packFooterParts(tailParts, columns, divider)
-  ];
 }
 function pathPrefixLength(segments) {
   if (
@@ -971,11 +921,6 @@ function piChocoDashboard(pi: ExtensionAPI) {
   };
   let headerRender = () => {
   };
-  let mcpServerNames = [];
-  const unsubscribeMcpStatus = subscribeMcpServerNames(pi.events, (names) => {
-    mcpServerNames = names;
-    footerRender();
-  });
   let interval;
   let unsubscribeThinkingToggle;
   let gitRefreshTimer;
@@ -1397,9 +1342,8 @@ function piChocoDashboard(pi: ExtensionAPI) {
           if (detail && config.footer.showClock) line4.push(formatAbsolute(Date.now(), config));
           const extensionStatuses = footerData.getExtensionStatuses();
           const extensionGroups = config.footer.showExtensionStatuses
-            ? extensionStatusGroups(extensionStatuses, mcpServerNames)
+            ? extensionStatusGroups(extensionStatuses)
             : [];
-          const groupedExtensionIndex = groupedExtensionStatusIndex(extensionStatuses);
           const visibleLines = [line1];
           if (config.footer.line2Visible) visibleLines.push(line2);
           if (config.footer.line3Visible) visibleLines.push(line3);
@@ -1410,11 +1354,7 @@ function piChocoDashboard(pi: ExtensionAPI) {
           const dashboardRows = visibleLines
             .filter((parts) => parts.length > 0)
             .flatMap(renderParts);
-          const statusRows = extensionGroups.flatMap((parts, index) => (
-            index === groupedExtensionIndex
-              ? packGroupedExtensionStatus(parts, width, divider)
-              : renderParts(parts)
-          ));
+          const statusRows = extensionGroups.flatMap(renderParts);
           return [...dashboardRows, ...statusRows];
         },
         dispose() {
@@ -1857,8 +1797,6 @@ function piChocoDashboard(pi: ExtensionAPI) {
     }
   });
   pi.on("session_shutdown", (event, ctx) => {
-    unsubscribeMcpStatus();
-    mcpServerNames = [];
     stopForegroundWork();
     finalizeRequest();
     if (config.transcript.systemEvents.modelAndSession || config.transcript.systemEvents.extensionsAndSecurity) {
@@ -1894,6 +1832,5 @@ export {
   compactPathForWidth,
   extensionStatusGroups,
   packFooterParts,
-  packGroupedExtensionStatus,
   piChocoDashboard as default
 };
