@@ -126,13 +126,10 @@ function withAgentDir(files, run) {
   }
 }
 
-test("reads the compaction trigger from pi-choco-setting.json", () => {
+test("reads the compaction trigger from pi-choco-setting.toml", () => {
   const loaded = withAgentDir(
     {
-      "pi-choco-setting.json": JSON.stringify({
-        version: 1,
-        compaction: { maxTokens: 450_000 },
-      }),
+      "pi-choco-setting.toml": "[compaction]\nmaxTokens = 450000\n",
     },
     loadCompactionConfig,
   );
@@ -152,10 +149,7 @@ test("falls back to the bundled defaults with no user setting file", () => {
 test("reports an invalid compaction value and keeps the other field", () => {
   const loaded = withAgentDir(
     {
-      "pi-choco-setting.json": JSON.stringify({
-        version: 1,
-        compaction: { triggerPercent: 150, maxTokens: 250_000 },
-      }),
+      "pi-choco-setting.toml": "[compaction]\ntriggerPercent = 150\nmaxTokens = 250000\n",
     },
     loadCompactionConfig,
   );
