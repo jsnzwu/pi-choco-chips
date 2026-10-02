@@ -3,6 +3,9 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test, { after } from "node:test";
+import { stripVTControlCharacters } from "node:util";
+
+import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 
 import piChocoChips, { applyComposerKeybindings } from "../extensions/index.ts";
 
@@ -90,6 +93,37 @@ test("applies and restores the shared composer keybindings", () => {
     "tui.input.newLine": "alt+enter",
     "app.message.followUp": [],
   });
+});
+
+test("skill composer embeds native working status and restores its border when idle", async () => {
+  const harness = createExtensionHarness();
+  let editorFactory;
+  const sessionContext = {
+    ...context,
+    sessionManager: { getBranch: () => [] },
+    ui: {
+      addAutocompleteProvider() {},
+      setEditorComponent: (factory) => { editorFactory = factory; },
+      getEditorComponent: () => editorFactory,
+    },
+  };
+  await harness.handlers.get("session_start")({}, sessionContext);
+  const keybindings = { getUserBindings: () => ({}), setUserBindings() {} };
+  const editor = editorFactory({ terminal: { rows: 24 }, requestRender() {} }, { borderColor: (text) => text }, keybindings);
+  assert.equal(editor.embedWorkingStatus, true);
+  editor.setWorkingStatusIndicator({
+    renderInBorder: (width) => truncateToWidth("⠋ Waiting for model · 12s", width, ""),
+    renderSpinnerInBorder: () => "⠋",
+  });
+  for (const width of [1, 8, 30, 80]) {
+    const border = stripVTControlCharacters(editor.render(width)[0]);
+    assert.ok(border.includes("⠋"), `width ${width}`);
+    assert.equal(visibleWidth(border), width);
+  }
+  assert.match(editor.render(80)[0], /^── ⠋ Waiting for model · 12s ─/);
+  editor.setWorkingStatusIndicator(undefined);
+  assert.equal(editor.render(80)[0], "─".repeat(80));
+  harness.handlers.get("session_shutdown")({}, sessionContext);
 });
 
 test("opens the interactive Choco settings page with no arguments", async () => {

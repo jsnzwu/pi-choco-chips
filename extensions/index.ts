@@ -437,7 +437,7 @@ export default function piChocoChips(pi: ExtensionAPI) {
       editorFactory = (tui, theme, keybindings) => {
         restoreComposerKeybindings?.();
         restoreComposerKeybindings = applyComposerKeybindings(keybindings);
-        return new SkillEditor(tui, theme, keybindings);
+        return new SkillEditor(tui, theme, keybindings, { embedWorkingStatus: true });
       };
       ctx.ui.setEditorComponent(editorFactory);
     }
