@@ -8,7 +8,7 @@
   "files": [
     "extensions",
     "themes",
-    "pi-choco-setting.json",
+    "pi-choco-setting.toml",
     "README.md",
     "LICENSE"
   ],
@@ -17,6 +17,9 @@
   },
   "scripts": {
     "test": "node --test"
+  },
+  "dependencies": {
+    "smol-toml": "^1.9.0"
   },
   "peerDependencies": {
     "@earendil-works/pi-ai": "*",

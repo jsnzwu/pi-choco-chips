@@ -19,29 +19,27 @@ The dashboard, shortcut extension, and `adam-dark` theme are loaded from this pa
 
 ## Settings
 
-The package ships defaults in [`pi-choco-setting.json`](pi-choco-setting.json). To override them, create:
+The package ships defaults in [`pi-choco-setting.toml`](pi-choco-setting.toml). To override them, create:
 
 ```text
-~/.pi/agent/pi-choco-setting.json
+~/.pi/agent/pi-choco-setting.toml
 ```
 
 or place the file under `PI_CODING_AGENT_DIR` when that environment variable is set. Each feature owns one top-level key. Dashboard settings live under the `dashboard` key:
 
-```json
-{
-  "version": 1,
-  "dashboard": {
-    "enabled": true,
-    "footer": {
-      "line2Visible": true,
-      "line3Visible": false
-    },
-    "transcript": {
-      "compactSameTurnSpacing": true
-    }
-  }
-}
+```toml
+[dashboard]
+enabled = true
+
+[dashboard.footer]
+line2Visible = true
+line3Visible = false
+
+[dashboard.transcript]
+compactSameTurnSpacing = true
 ```
+
+Only TOML configuration is supported; `pi-choco-setting.json` is ignored. Convert existing JSON overrides to TOML before restarting Pi. Keep only fields you want to override rather than copying bundled defaults. `/dashboard` saves only differences from the defaults and preserves other settings, but normalizes TOML formatting and does not retain comments. Returning a setting to its default removes that override.
 
 User settings are deep-merged over the bundled defaults. The footer uses one responsive breakpoint: compact presentation below 60 columns and detail presentation at 60 columns or above. Compact presentation keeps title/model, the context percentage, a forced compact path, and extension statuses while hiding the context window, cache/time metrics, the redundant project name, Git status, usage, phase, and clock. Detail presentation restores those configured metrics and uses labeled `📁`, `cwd`, `git`, and `usage` fields. Footer line 3, which contains detailed token/cache/cost usage in detail presentation, is hidden by default and remains available through `/dashboard`. The footer packs complete fields onto each row and moves fields that do not fit to the next row instead of splitting them across lines. Compact paths use stable segment abbreviations without filesystem reads: important roots and the final two directories stay complete, while middle directories use initials (`Documents/work-src` becomes `D/w-s`); if that still does not fit, the earliest segments collapse behind `…`. Each extension owns its status key and content. The dashboard renders every non-empty status line in publication order and applies the same bounded packing behavior without interpreting extension-specific keys or text. Restart Pi after dashboard rendering or settings changes because the footer and compact transcript components are installed once per process.
 
@@ -49,14 +47,10 @@ User settings are deep-merged over the bundled defaults. The footer uses one res
 
 Early compaction lives under the `compaction` key of the same file:
 
-```json
-{
-  "version": 1,
-  "compaction": {
-    "triggerPercent": 80,
-    "maxTokens": 300000
-  }
-}
+```toml
+[compaction]
+triggerPercent = 80
+maxTokens = 300000
 ```
 
 | Key | Default | Meaning |
@@ -114,4 +108,4 @@ PCC is not a redaction layer. Its local UI can display working directories, Git 
 
 ## Package
 
-The package intentionally has no bundled runtime dependencies. Pi provides its core packages to extensions; the peer dependencies in `package.json` document the APIs used here.
+The package uses `smol-toml` to parse and serialize configuration. Pi provides its core packages to extensions; the peer dependencies in `package.json` document the APIs used here.

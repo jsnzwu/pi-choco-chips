@@ -3,7 +3,7 @@ import { loadSection } from "./settings.ts";
 export const COMPACTION_CONTINUATION_TYPE =
   "pi-choco-chips.compaction-continuation";
 // Both values are overridable through the `compaction` section of
-// `pi-choco-setting.json`. `maxTokens` is an absolute ceiling on the percentage
+// `pi-choco-setting.toml`. `maxTokens` is an absolute ceiling on the percentage
 // trigger: million-token windows make 80% land past the point where prompt
 // size, latency, and cost stop being useful, so the ceiling binds first for
 // those models and stays inert below `maxTokens / (percent / 100)`.

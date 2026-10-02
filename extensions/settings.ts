@@ -1,11 +1,12 @@
-import { readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { parse, stringify } from "smol-toml";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const CONFIG_FILE = "pi-choco-setting.json";
+export const CONFIG_FILE = "pi-choco-setting.toml";
 export const BUNDLED_CONFIG_FILE = fileURLToPath(
-  new URL("../pi-choco-setting.json", import.meta.url),
+  new URL("../pi-choco-setting.toml", import.meta.url),
 );
 
 export function agentDir() {
@@ -34,7 +35,7 @@ export function deepMerge(base, overlay) {
 }
 
 export function readSection(path, section) {
-  const parsed = JSON.parse(readFileSync(path, "utf8"));
+  const parsed = parse(readFileSync(path, "utf8"));
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
     throw new Error("root setting must be an object");
   }
@@ -44,6 +45,37 @@ export function readSection(path, section) {
     throw new Error(`${section} setting must be an object`);
   }
   return value;
+}
+
+function overrides(config, defaults) {
+  const result = Object.create(null);
+  for (const [key, value] of Object.entries(config)) {
+    const baseline = defaults?.[key];
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      const nested = overrides(value, baseline);
+      if (Object.keys(nested).length) result[key] = nested;
+    } else if (JSON.stringify(value) !== JSON.stringify(baseline)) {
+      result[key] = value;
+    }
+  }
+  return result;
+}
+
+// Persist only overrides, preserving other sections and unknown user settings.
+// Serialization normalizes formatting; TOML comments are not retained.
+export function writeSection(section, config, defaults) {
+  const path = join(agentDir(), CONFIG_FILE);
+  const root = existsSync(path) ? parse(readFileSync(path, "utf8")) : {};
+  const current = root[section];
+  if (current !== undefined && (!current || typeof current !== "object" || Array.isArray(current))) {
+    throw new Error(`${section} setting must be an object`);
+  }
+  const baseline = deepMerge(defaults, readSection(BUNDLED_CONFIG_FILE, section));
+  const delta = overrides(deepMerge(current ?? {}, config), baseline);
+  if (Object.keys(delta).length) root[section] = delta;
+  else delete root[section];
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, stringify(root), "utf8");
 }
 
 // Bundled defaults first, then the user file in the agent directory. A missing

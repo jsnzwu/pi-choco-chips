@@ -1,0 +1,128 @@
+version = 1
+
+[compaction]
+triggerPercent = 80
+maxTokens = 300000
+
+[dashboard]
+version = 1
+enabled = true
+
+[dashboard.title]
+autoGenerate = true
+strategy = "model-summary"
+maxChars = 32
+maxSourceChars = 6000
+maxOutputTokens = 128
+reasoningEffort = "low"
+replaceLegacyGeneratedTitle = true
+fallbackToProject = true
+prompt = "Generate a concise semantic title for this coding-agent session. Reflect the primary task and current direction, not the wording of the first message. Use 4-16 Chinese characters for Chinese conversations or 3-8 words otherwise. Output only the title without quotes, markdown, labels, or ending punctuation."
+
+[dashboard.header]
+enabled = true
+mode = "detailed"
+showVersion = true
+showProject = true
+showTitle = true
+showGit = true
+showModel = true
+showDisplayHints = true
+
+[dashboard.footer]
+enabled = true
+refreshIntervalMs = 1000
+wrapToPreserveFields = true
+line2Visible = true
+line3Visible = false
+showProjectName = true
+showFullCwd = true
+showGeneratedTitle = true
+showGitWorktree = true
+showTurnNumber = true
+showProviderAndModel = true
+showThinkingLevel = true
+showContextUsage = true
+showRuntimePhase = false
+showResponseUsage = false
+showTurnUsage = false
+showSessionUsage = true
+showCacheUsage = true
+showCost = true
+showClock = false
+showExtensionStatuses = true
+
+[dashboard.transcript]
+persistMetadata = true
+compactSameTurnSpacing = true
+turnSeparator = "line"
+
+[dashboard.transcript.timestamps]
+absolute = true
+includeDate = true
+milliseconds = false
+relative = true
+timeZone = "local"
+
+[dashboard.transcript.roles]
+user = "YOU"
+assistant = "PI"
+tool = "TOOL"
+system = "SYSTEM"
+turn = "TURN"
+
+[dashboard.transcript.thinking]
+collapsedByDefault = true
+hiddenLabel = ""
+showDurationInAssistantMetadata = true
+compactSummary = true
+summaryLabel = "THINK"
+summarySeparator = " › "
+showLineDuration = true
+maxSummaryChars = 1200
+
+[dashboard.transcript.usage]
+response = true
+turn = true
+session = true
+input = true
+output = true
+reasoning = true
+cacheRead = true
+cacheWrite = true
+cost = true
+
+[dashboard.transcript.systemEvents]
+errorsAndRetries = true
+compactionAndContext = true
+modelAndSession = true
+extensionsAndSecurity = true
+
+[dashboard.working]
+enabled = true
+showPhase = true
+showElapsed = true
+refreshIntervalMs = 1000
+indicator = "dot"
+
+[dashboard.git]
+enabled = true
+showBranch = true
+showDirty = true
+showAheadBehind = true
+showStagedCount = true
+showModifiedCount = true
+showUntrackedCount = true
+refreshAfterTools = true
+refreshAfterTurn = true
+
+[dashboard.tools]
+persistTimings = true
+showErrorRecordWhenCollapsed = true
+maxErrorChars = 4000
+
+[dashboard.controls]
+registerCommands = true
+registerShortcuts = false
+watchConfig = false
+reloadRequiredAfterConfigChange = true

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
+import { parse } from "smol-toml";
 
 import { createEventBus } from "@earendil-works/pi-coding-agent";
 
@@ -43,6 +44,8 @@ test("package loads the shortcut, dashboard, and theme resources", () => {
   ]);
   assert.deepEqual(packageJson.pi.themes, ["./themes/adam-dark.json"]);
   assert.equal(packageJson.files.includes("themes"), true);
+  assert.equal(packageJson.files.includes("pi-choco-setting.toml"), true);
+  assert.equal(packageJson.files.includes("pi-choco-setting.json"), false);
 });
 
 test("bundled adam-dark theme resolves its semantic palette", () => {
@@ -65,8 +68,8 @@ test("bundled adam-dark theme resolves its semantic palette", () => {
 });
 
 test("bundled settings contain the dashboard section", () => {
-  const settings = JSON.parse(
-    readFileSync(new URL("../pi-choco-setting.json", import.meta.url), "utf8"),
+  const settings = parse(
+    readFileSync(new URL("../pi-choco-setting.toml", import.meta.url), "utf8"),
   );
   assert.equal(settings.version, 1);
   assert.equal(settings.dashboard.enabled, true);

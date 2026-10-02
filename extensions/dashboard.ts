@@ -20,10 +20,10 @@ import {
   visibleWidth,
   wrapTextWithAnsi
 } from "@earendil-works/pi-tui";
-import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { existsSync, realpathSync } from "node:fs";
 import { createRequire } from "node:module";
-import { basename, dirname, join, resolve } from "node:path";
-import { agentDir, CONFIG_FILE, loadSection } from "./settings.ts";
+import { basename, join, resolve } from "node:path";
+import { loadSection, writeSection } from "./settings.ts";
 const META_TYPE = "pi-choco-chips.dashboard.meta";
 const TOOL_TIMING_TYPE = "pi-choco-chips.dashboard.tool-timing";
 const TITLE_STATE_TYPE = "pi-choco-chips.dashboard.title-state";
@@ -158,19 +158,7 @@ function loadConfig() {
   return loadSection("dashboard", DEFAULT_CONFIG);
 }
 function writeDashboardConfig(config) {
-  const path = join(agentDir(), CONFIG_FILE);
-  let root = { version: 1 };
-  if (existsSync(path)) {
-    const parsed = JSON.parse(readFileSync(path, "utf8"));
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-      throw new Error("root setting must be an object");
-    }
-    root = parsed;
-  }
-  if (root.version === void 0) root.version = 1;
-  root.dashboard = config;
-  mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, `${JSON.stringify(root, null, 2)}\n`, "utf8");
+  writeSection("dashboard", config, DEFAULT_CONFIG);
 }
 function cloneUsage() {
   return { ...EMPTY_USAGE };
