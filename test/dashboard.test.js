@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
+import { stripVTControlCharacters } from "node:util";
 import { parse } from "smol-toml";
 
 import { createEventBus } from "@earendil-works/pi-coding-agent";
+import { visibleWidth } from "@earendil-works/pi-tui";
 
 import piChocoDashboard, {
   compactPathForWidth,
@@ -93,7 +95,8 @@ test("dashboard source keeps compact footer hierarchy and field-aware statuses",
   assert.match(source, /status\.split\(\/\\r\?\\n\//);
   assert.match(source, /const extensionStatuses = footerData\.getExtensionStatuses\(\)/);
   assert.match(source, /extensionStatusGroups\(extensionStatuses\)/);
-  assert.match(source, /extensionGroups\.flatMap\(renderParts\)/);
+  assert.match(source, /metadata\.push\(\.\.\.line4\)/);
+  assert.match(source, /if \(extensionGroups\.length\) rows\.push\(extensionGroups\.flat\(\)\)/);
   assert.match(source, /packFooterParts\(parts, width, divider\)/);
   assert.match(source, /const DETAIL_FOOTER_WIDTH = 60/);
   assert.match(source, /const detail = width >= DETAIL_FOOTER_WIDTH/);
@@ -104,22 +107,26 @@ test("dashboard source keeps compact footer hierarchy and field-aware statuses",
   assert.match(source, /if \(detail && config\.footer\.showRuntimePhase\)/);
   assert.match(source, /else if \(config\.footer\.showFullCwd\)/);
   assert.doesNotMatch(source, /MINIMAL_FOOTER_WIDTH|const minimal =|const relaxed =/);
-  assert.match(source, /return \[\.\.\.dashboardRows, \.\.\.statusRows\]/);
+  assert.match(source, /const rows = \[line1, metadata\]/);
+  assert.match(source, /return rows\.flatMap/);
 });
 
-test("footer packing moves whole fields instead of splitting them", () => {
-  assert.deepEqual(
-    packFooterParts(["title", "model", "context"], 13, " · "),
-    ["title · model", "context"],
-  );
-  assert.deepEqual(
-    packFooterParts(["first", "second"], 14, " · "),
-    ["first · second"],
-  );
-  assert.deepEqual(
-    packFooterParts(["first", "second"], 13, " · "),
-    ["first", "second"],
-  );
+test("footer shrinks long fields without adding rows or overflowing terminal columns", () => {
+  const rows = [
+    ["\x1b[36m本地委派审计与运行版本对齐\x1b[0m", "litellm/gpt-6-astra·medium", "13%/872K/CH97%", "22h 58m 56s"],
+    ["📁 miaw", "cwd /mnt/d/Nextcloud/sync-git/workflow/miaw", "git main ↑101 ↓0 S0 M0 ?0"],
+    ["🔌 MCP: 1 server enabled", "TSK-20261001-2009-host-orchestration-improve-eligible · 0 AGT"],
+  ];
+  for (let width = 0; width <= 240; width++) {
+    const rendered = rows.flatMap((parts) => packFooterParts(parts, width, " · "));
+    assert.equal(rendered.length, 3, `width ${width}`);
+    for (const row of rendered) assert.ok(visibleWidth(row) <= width, `width ${width}: ${row}`);
+  }
+  assert.deepEqual(packFooterParts(["first", "second"], 14, " · "), ["first · second"]);
+  assert.deepEqual(packFooterParts(["first", "second"], 13, " · ").map(stripVTControlCharacters), ["first · seco…"]);
+  assert.deepEqual(packFooterParts([], 80, " · "), [""]);
+  assert.match(packFooterParts(rows[0], 90, " · ")[0], /13%\/872K\/CH97% · 22h 58m 56s$/);
+  assert.deepEqual(packFooterParts(rows[0], 240, " · "), [rows[0].join(" · ")]);
 });
 
 test("footer uses stable segment abbreviations for narrow paths", () => {

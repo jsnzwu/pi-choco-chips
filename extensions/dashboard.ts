@@ -358,21 +358,19 @@ function extensionStatusGroups(statuses) {
   ));
 }
 function packFooterParts(parts, width, divider) {
-  const columns = Number.isFinite(width) ? Math.max(1, Math.trunc(width)) : 1;
-  const rows = [];
-  let row = "";
-  for (const part of parts) {
-    if (typeof part !== "string" || visibleWidth(part) === 0) continue;
-    const candidate = row ? `${row}${divider}${part}` : part;
-    if (row && visibleWidth(candidate) > columns) {
-      rows.push(truncateToWidth(row, columns, "…"));
-      row = part;
-    } else {
-      row = candidate;
-    }
+  const columns = Number.isFinite(width) ? Math.max(0, Math.trunc(width)) : 0;
+  const fields = parts.filter((part) => typeof part === "string" && visibleWidth(part) > 0);
+  const budgets = fields.map((part) => visibleWidth(part));
+  let overflow = visibleWidth(fields.join(divider)) - columns;
+  // Shrink long fields first, retaining short metrics until the final clipping pass.
+  while (overflow > 0 && budgets.length) {
+    const longest = Math.max(...budgets);
+    if (longest <= 8) break;
+    budgets[budgets.indexOf(longest)]--;
+    overflow--;
   }
-  if (row) rows.push(truncateToWidth(row, columns, "…"));
-  return rows;
+  const row = fields.map((part, index) => truncateToWidth(part, budgets[index], "…")).join(divider);
+  return [truncateToWidth(row, columns, "…")];
 }
 function pathPrefixLength(segments) {
   if (
@@ -1279,7 +1277,7 @@ function piChocoDashboard(pi: ExtensionAPI) {
             line1.push(thinkingColor(theme.bold(title || basename(ctx.cwd))));
           }
           if (config.footer.showProviderAndModel) {
-            const model = `${currentProvider}/${currentModel}`;
+            const model = detail ? `${currentProvider}/${currentModel}` : currentModel;
             const thinking = config.footer.showThinkingLevel ? `\xB7${currentThinking}` : "";
             line1.push(thinkingColor(theme.bold(`${model}${thinking}`)));
           }
@@ -1320,8 +1318,15 @@ function piChocoDashboard(pi: ExtensionAPI) {
             if (modelUsageParts.length) {
               line3.push(`${theme.fg("dim", "usage ")}${modelUsageParts.join(" ")}`);
             }
-          } else if (config.footer.showFullCwd) {
-            line2.push(theme.fg("dim", displayedCwd));
+          } else {
+            if (config.footer.showProjectName) {
+              line2.push(theme.fg("syntaxString", basename(ctx.cwd)));
+            } else if (config.footer.showFullCwd) {
+              line2.push(theme.fg("dim", displayedCwd));
+            }
+            if (config.footer.showGitWorktree) {
+              line2.push(styledGitText(gitState, config, theme, true));
+            }
           }
           if (detail && config.footer.showRuntimePhase) {
             const elapsed = phase === "Ready" ? "" : ` ${formatDuration(performance.now() - phaseStartedMono)}`;
@@ -1332,18 +1337,12 @@ function piChocoDashboard(pi: ExtensionAPI) {
           const extensionGroups = config.footer.showExtensionStatuses
             ? extensionStatusGroups(extensionStatuses)
             : [];
-          const visibleLines = [line1];
-          if (config.footer.line2Visible) visibleLines.push(line2);
-          if (config.footer.line3Visible) visibleLines.push(line3);
-          visibleLines.push(line4);
-          const renderParts = (parts) => config.footer.wrapToPreserveFields
-            ? packFooterParts(parts, width, divider)
-            : wrapTextWithAnsi(parts.join(divider), Math.max(1, width));
-          const dashboardRows = visibleLines
-            .filter((parts) => parts.length > 0)
-            .flatMap(renderParts);
-          const statusRows = extensionGroups.flatMap(renderParts);
-          return [...dashboardRows, ...statusRows];
+          const metadata = config.footer.line2Visible ? line2 : [];
+          if (config.footer.line3Visible) metadata.push(...line3);
+          metadata.push(...line4);
+          const rows = [line1, metadata];
+          if (extensionGroups.length) rows.push(extensionGroups.flat());
+          return rows.flatMap((parts) => packFooterParts(parts, width, divider));
         },
         dispose() {
           unsubscribe();
