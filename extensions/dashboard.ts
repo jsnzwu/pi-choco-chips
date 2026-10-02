@@ -128,8 +128,7 @@ const DEFAULT_CONFIG = {
     enabled: true,
     showPhase: true,
     showElapsed: true,
-    refreshIntervalMs: 1e3,
-    indicator: "dot"
+    refreshIntervalMs: 1e3
   },
   git: {
     enabled: true,
@@ -371,6 +370,14 @@ function packFooterParts(parts, width, divider) {
   }
   const row = fields.map((part, index) => truncateToWidth(part, budgets[index], "…")).join(divider);
   return [truncateToWidth(row, columns, "…")];
+}
+function alignFooterTitle(title, parts, width, divider) {
+  const columns = Number.isFinite(width) ? Math.max(0, Math.trunc(width)) : 0;
+  const right = packFooterParts(parts, Math.max(0, columns - (title && columns >= 3 ? 3 : 0)), divider)[0];
+  const rightWidth = visibleWidth(right);
+  const left = truncateToWidth(title, Math.max(0, columns - rightWidth - (rightWidth ? 2 : 0)), "…");
+  if (!rightWidth) return left;
+  return left + " ".repeat(Math.max(0, columns - visibleWidth(left) - rightWidth)) + right;
 }
 function pathPrefixLength(segments) {
   if (
@@ -966,11 +973,6 @@ function piChocoDashboard(pi: ExtensionAPI) {
     phaseStartedMono = performance.now();
     requestUiRender();
   };
-  const updateWorkingIndicator = (ctx) => {
-    if (!config.working.enabled) return;
-    const thinkingColor = ctx.ui.theme.getThinkingBorderColor(currentThinking);
-    ctx.ui.setWorkingIndicator({ frames: [thinkingColor("\u25CF")] });
-  };
   const appendSystem = (label, text, level = "info", timestamp = Date.now()) => {
     appendMeta({
       kind: "system",
@@ -1247,7 +1249,7 @@ function piChocoDashboard(pi: ExtensionAPI) {
           return super.render(width);
         }
       }
-      return new WhiteBorderEditor(tui, { ...editorTheme, borderColor: thinkingBorder() }, keybindings);
+      return new WhiteBorderEditor(tui, { ...editorTheme, borderColor: thinkingBorder() }, keybindings, { embedWorkingStatus: true });
     });
     whiteEditorInstalled = true;
   };
@@ -1267,6 +1269,7 @@ function piChocoDashboard(pi: ExtensionAPI) {
           const divider = theme.fg("borderMuted", " \xB7 ");
           const displayedCwd = compactPathForWidth(ctx.cwd, width - (detail ? 4 : 0), !detail);
           const line1 = [];
+          let titleText = "";
           const line2 = [];
           const line3 = [];
           const line4 = [];
@@ -1274,12 +1277,12 @@ function piChocoDashboard(pi: ExtensionAPI) {
           const context = ctx.getContextUsage();
           const contextPercent = context ? context.percent === null ? "?" : `${Math.round(context.percent)}%` : void 0;
           if (config.footer.showGeneratedTitle) {
-            line1.push(thinkingColor(theme.bold(title || basename(ctx.cwd))));
+            titleText = thinkingColor(theme.bold(title || basename(ctx.cwd)));
           }
           if (config.footer.showProviderAndModel) {
             const model = detail ? `${currentProvider}/${currentModel}` : currentModel;
             const thinking = config.footer.showThinkingLevel ? `\xB7${currentThinking}` : "";
-            line1.push(thinkingColor(theme.bold(`${model}${thinking}`)));
+            line1.push(theme.fg("muted", `${model}${thinking}`));
           }
           if (contextPercent !== void 0) {
             const contextParts = [contextPercent];
@@ -1340,9 +1343,9 @@ function piChocoDashboard(pi: ExtensionAPI) {
           const metadata = config.footer.line2Visible ? line2 : [];
           if (config.footer.line3Visible) metadata.push(...line3);
           metadata.push(...line4);
-          const rows = [line1, metadata];
+          const rows = [metadata];
           if (extensionGroups.length) rows.push(extensionGroups.flat());
-          return rows.flatMap((parts) => packFooterParts(parts, width, divider));
+          return [alignFooterTitle(titleText, line1, width, divider), ...rows.flatMap((parts) => packFooterParts(parts, width, divider))];
         },
         dispose() {
           unsubscribe();
@@ -1441,7 +1444,7 @@ function piChocoDashboard(pi: ExtensionAPI) {
     ctx.ui.setHiddenThinkingLabel(config.transcript.thinking.hiddenLabel);
     if (config.working.enabled) {
       ctx.ui.setWorkingVisible(true);
-      updateWorkingIndicator(ctx);
+      ctx.ui.setWorkingIndicator();
     }
     if (interval) clearInterval(interval);
     const tickMs = Math.max(250, Math.min(config.footer.refreshIntervalMs, config.working.refreshIntervalMs));
@@ -1739,7 +1742,6 @@ function piChocoDashboard(pi: ExtensionAPI) {
   });
   pi.on("thinking_level_select", (event) => {
     currentThinking = event.level;
-    if (activeCtx) updateWorkingIndicator(activeCtx);
     requestUiRender();
     if (config.transcript.systemEvents.modelAndSession) {
       appendSystem("Thinking level", `${event.previousLevel} \u2192 ${event.level}`, "info");
@@ -1816,6 +1818,7 @@ function piChocoDashboard(pi: ExtensionAPI) {
   });
 }
 export {
+  alignFooterTitle,
   compactPathForWidth,
   extensionStatusGroups,
   packFooterParts,

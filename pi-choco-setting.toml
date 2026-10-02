@@ -103,7 +103,6 @@ enabled = true
 showPhase = true
 showElapsed = true
 refreshIntervalMs = 1000
-indicator = "dot"
 
 [dashboard.git]
 enabled = true
