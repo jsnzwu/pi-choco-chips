@@ -14,6 +14,7 @@ import {
   Container,
   matchesKey,
   SettingsList,
+  sliceByColumn,
   Spacer,
   Text,
   truncateToWidth,
@@ -329,7 +330,7 @@ function sanitizeModelTitle(text, maxChars) {
   const cleaned = firstLine.replace(/^(?:title|session|标题|会话标题)\s*[:：-]\s*/i, "").replace(/^["'“”‘’`]+|["'“”‘’`。！？!?.,，；;：:]+$/g, "").trim();
   return generateTitle(cleaned, maxChars);
 }
-function styledGitText(state, config, theme, statusBar = false) {
+function styledGitText(state, config, theme, statusBar = false, compact = false) {
   if (!state.available) return theme.fg("dim", "not-a-repo");
   const parts = [];
   const dirty = state.staged + state.modified + state.untracked > 0;
@@ -338,6 +339,7 @@ function styledGitText(state, config, theme, statusBar = false) {
     const branch = state.branch || "detached";
     parts.push(theme.fg("accent", dirty ? `${branch}*` : branch));
   }
+  if (compact) return parts.join(" ");
   if (config.git.showAheadBehind && (state.ahead || state.behind)) {
     parts.push(metricText(theme, "\u2191", String(state.ahead), countColor));
     parts.push(metricText(theme, "\u2193", String(state.behind), countColor));
@@ -347,13 +349,94 @@ function styledGitText(state, config, theme, statusBar = false) {
   if (config.git.showUntrackedCount) parts.push(metricText(theme, "?", String(state.untracked), countColor));
   return parts.join(" ");
 }
+function footerGlyphs(mode = process.env.PI_GLYPH_MODE) {
+  return mode === "ascii"
+    ? { cwd: "cwd", git: "git", model: "model", divider: " | ", ellipsis: "...", ahead: "ahead", behind: "behind" }
+    : { cwd: "\uF114", git: "\uE725", model: "\uF4BC", divider: " · ", ellipsis: "…", ahead: "↑", behind: "↓" };
+}
+function compactBranchForWidth(branch, width, ellipsis = "…") {
+  const columns = Math.max(0, Math.trunc(width));
+  if (visibleWidth(branch) <= columns) return branch;
+  const words = branch.split(/([/_-])/u);
+  // Abbreviate leading words first, retaining the last two words when possible.
+  for (let index = 0; index < words.length - 3; index += 2) {
+    words[index] = abbreviatePathSegment(words[index]);
+    const candidate = words.join("");
+    if (visibleWidth(candidate) <= columns) return candidate;
+  }
+  for (const tail of [words.slice(-3).join(""), words.at(-1)]) {
+    if (visibleWidth(tail) <= columns) {
+      return visibleWidth(ellipsis + tail) <= columns ? ellipsis + tail : tail;
+    }
+  }
+  const marker = ellipsis.slice(0, columns);
+  const tailWidth = Math.max(0, columns - visibleWidth(marker));
+  return marker + sliceByColumn(branch, Math.max(0, visibleWidth(branch) - tailWidth), tailWidth);
+}
+function gitFooterText(state, config, theme, width, detail, glyphs = footerGlyphs()) {
+  const columns = Math.max(0, Math.trunc(width));
+  if (!state.available) return truncateToWidth("not-a-repo", columns, glyphs.ellipsis.slice(0, columns));
+  const dirty = state.staged + state.modified + state.untracked > 0;
+  const name = config.git.showBranch ? state.branch || "detached" : "";
+  const star = name && dirty ? "*" : "";
+  const metrics = [];
+  if (config.git.showAheadBehind && (state.ahead || state.behind)) {
+    metrics.push([glyphs.ahead, state.ahead], [glyphs.behind, state.behind]);
+  }
+  if (config.git.showStagedCount) metrics.push(["S", state.staged]);
+  if (config.git.showModifiedCount) metrics.push(["M", state.modified]);
+  if (config.git.showUntrackedCount) metrics.push(["?", state.untracked]);
+  const render = (label, counts, branch = name) => [
+    label ? theme.fg("dim", glyphs.git) : "",
+    branch ? theme.fg("accent", `${branch}${star}`) : "",
+    ...counts.map(([key, count]) => metricText(theme, key, String(count), "muted"))
+  ].filter(Boolean).join(" ");
+  if (detail && visibleWidth(render(true, metrics)) <= columns) return render(true, metrics);
+  const nonzero = metrics.filter(([, count]) => count !== 0);
+  if (detail && visibleWidth(render(true, nonzero)) <= columns) return render(true, nonzero);
+  const branchMinimum = Math.min(visibleWidth(name), visibleWidth(name.split(/[\/_-]/u).slice(-2).join("-"))) + visibleWidth(star);
+  while (nonzero.length && branchMinimum + visibleWidth(render(false, nonzero, "")) + (name ? 1 : 0) > columns) nonzero.pop();
+  const suffixWidth = visibleWidth(render(false, nonzero, ""));
+  const branchBudget = Math.max(0, columns - visibleWidth(star) - suffixWidth - (name && suffixWidth ? 1 : 0));
+  const branch = compactBranchForWidth(name, branchBudget, glyphs.ellipsis);
+  if (!branch && star) return columns ? theme.fg("accent", star) : "";
+  return render(false, nonzero, branch);
+}
+function footerContextParts(cwd, state, config, theme, width, detail, glyphs = footerGlyphs()) {
+  const columns = Math.max(0, Math.trunc(width));
+  const fields = [];
+  if (detail && config.footer.showProjectName) fields.push(theme.fg("syntaxString", theme.bold(basename(cwd))));
+  const budget = Math.max(0, columns - visibleWidth(fields.join(glyphs.divider)) - (fields.length ? visibleWidth(glyphs.divider) : 0));
+  const hasPath = config.footer.showFullCwd;
+  const hasGit = config.footer.showGitWorktree;
+  const dividerWidth = hasPath && hasGit ? visibleWidth(glyphs.divider) : 0;
+  const pathMinimum = hasPath ? visibleWidth(compactPathForWidth(cwd, Infinity, true, glyphs.ellipsis)) : 0;
+  const gitMinimum = hasGit && config.git.showBranch ? Math.min(visibleWidth(state.branch || "detached") + 1, Math.floor(budget / 2)) : 0;
+  const reservedPath = Math.min(pathMinimum, Math.max(0, budget - dividerWidth - gitMinimum));
+  const gitBudget = hasGit ? Math.max(0, budget - dividerWidth - reservedPath) : 0;
+  const git = hasGit ? gitFooterText(state, config, theme, gitBudget, detail, glyphs) : "";
+  const pathBudget = Math.max(0, budget - visibleWidth(git) - (hasPath && git ? visibleWidth(glyphs.divider) : 0));
+  if (hasPath) {
+    const label = detail ? `${glyphs.cwd} ` : "";
+    let path = compactPathForWidth(cwd, Math.max(0, pathBudget - visibleWidth(label)), false, glyphs.ellipsis);
+    // Labels are expendable; retain the final directory pair before keeping an icon.
+    if (!detail || visibleWidth(label) + pathMinimum > pathBudget) {
+      path = compactPathForWidth(cwd, pathBudget, false, glyphs.ellipsis);
+      if (path) fields.push(theme.fg("dim", path));
+    } else if (path) fields.push(theme.fg("dim", label + path));
+  } else if (!detail && config.footer.showProjectName) {
+    fields.push(truncateToWidth(basename(cwd), Math.max(0, pathBudget), glyphs.ellipsis));
+  }
+  if (git) fields.push(git);
+  return fields;
+}
 function footerStatusLines(status) {
   if (typeof status !== "string") return [];
   return status.split(/\r?\n/).map((row) => row.trim()).filter(Boolean);
 }
-function extensionStatusGroups(statuses) {
-  return [...statuses.values()].flatMap((status) => (
-    footerStatusLines(status).map((line) => [line])
+function extensionStatusGroups(statuses, excludeKey) {
+  return [...statuses.entries()].flatMap(([key, status]) => (
+    key === excludeKey ? [] : footerStatusLines(status).map((line) => [line])
   ));
 }
 function packFooterParts(parts, width, divider) {
@@ -368,52 +451,56 @@ function packFooterParts(parts, width, divider) {
     budgets[budgets.indexOf(longest)]--;
     overflow--;
   }
-  const row = fields.map((part, index) => truncateToWidth(part, budgets[index], "…")).join(divider);
-  return [truncateToWidth(row, columns, "…")];
+  const ellipsis = footerGlyphs().ellipsis;
+  const row = fields.map((part, index) => truncateToWidth(part, budgets[index], ellipsis.slice(0, budgets[index]))).join(divider);
+  return [truncateToWidth(row, columns, ellipsis.slice(0, columns))];
 }
-function alignFooterTitle(title, parts, width, divider) {
+function alignFooterTitle(title, parts, width, divider, hasModel = true) {
   const columns = Number.isFinite(width) ? Math.max(0, Math.trunc(width)) : 0;
-  const right = packFooterParts(parts, Math.max(0, columns - (title && columns >= 3 ? 3 : 0)), divider)[0];
+  const ellipsis = footerGlyphs().ellipsis;
+  const left = truncateToWidth(title, columns, ellipsis.slice(0, columns));
+  const leftWidth = visibleWidth(left);
+  const budget = Math.max(0, columns - leftWidth - (leftWidth ? 2 : 0));
+  const fields = parts.map((part) => Array.isArray(part) ? [...part] : [part]);
+  const text = () => fields.map((variants) => variants[0]).join(divider);
+  if (hasModel && fields[0]?.length > 1 && visibleWidth(text()) > budget) fields[0].shift();
+  // Numeric fields lose detail, then disappear; only the model may be clipped.
+  while (visibleWidth(text()) > budget && fields.length > (hasModel ? 1 : 0)) {
+    const last = fields.at(-1);
+    if (last.length > 1) last.shift();
+    else fields.pop();
+  }
+  const right = truncateToWidth(text(), budget, ellipsis.slice(0, budget));
   const rightWidth = visibleWidth(right);
-  const left = truncateToWidth(title, Math.max(0, columns - rightWidth - (rightWidth ? 2 : 0)), "…");
   if (!rightWidth) return left;
   return left + " ".repeat(Math.max(0, columns - visibleWidth(left) - rightWidth)) + right;
 }
-function pathPrefixLength(segments) {
-  if (
-    segments[0]?.toLowerCase() === "mnt"
-    && /^[a-z]$/i.test(segments[1] || "")
-    && segments[2]?.toLowerCase() === "users"
-    && segments[3]
-  ) return 4;
-  if (segments[0]?.toLowerCase() === "home" && segments[1]) return 2;
-  if (
-    /^[a-z]:$/i.test(segments[0] || "")
-    && segments[1]?.toLowerCase() === "users"
-    && segments[2]
-  ) return 3;
-  return segments.length > 0 ? 1 : 0;
-}
 function abbreviatePathSegment(segment) {
-  return segment.replace(/[^._-]+/gu, (token) => Array.from(token)[0] || "");
+  return segment.startsWith(".") ? `.${Array.from(segment.slice(1))[0] || ""}` : Array.from(segment)[0] || "";
 }
-function compactPathForWidth(pathText, width, forceCompact = false) {
-  const columns = Number.isFinite(width) ? Math.max(1, Math.trunc(width)) : 1;
+function compactPathForWidth(pathText, width, forceCompact = false, ellipsis = "…") {
+  const columns = width === Infinity ? Infinity : Number.isFinite(width) ? Math.max(0, Math.trunc(width)) : 0;
+  if (!columns) return "";
   if (typeof pathText !== "string" || !forceCompact && visibleWidth(pathText) <= columns) return pathText;
   const separator = pathText.includes("\\") && !pathText.includes("/") ? "\\" : "/";
   const root = pathText.startsWith(separator) ? separator : "";
   const segments = pathText.split(/[\\/]+/).filter(Boolean);
-  if (segments.length === 0) return truncateToWidth(pathText, columns, "…");
-  const prefixLength = pathPrefixLength(segments);
-  const tailStart = Math.max(prefixLength, segments.length - 2);
-  const compactSegments = segments.map((segment, index) => (
-    index >= prefixLength && index < tailStart ? abbreviatePathSegment(segment) : segment
-  ));
-  const compactPath = `${root}${compactSegments.join(separator)}`;
+  if (segments.length === 0) return truncateToWidth(pathText, columns, ellipsis.slice(0, columns));
+  const compactSegments = [...segments];
+  let compactPath = `${root}${compactSegments.join(separator)}`;
+  for (let index = 0; index < segments.length - 2; index++) {
+    if (/^[a-z]:$/i.test(segments[index])) continue;
+    compactSegments[index] = abbreviatePathSegment(segments[index]);
+    compactPath = `${root}${compactSegments.join(separator)}`;
+    if (!forceCompact && visibleWidth(compactPath) <= columns) return compactPath;
+  }
   if (visibleWidth(compactPath) <= columns) return compactPath;
-  let best = truncateToWidth(segments.at(-1) || compactPath, columns, "…");
+  if (segments.length >= 2) compactSegments[segments.length - 2] = abbreviatePathSegment(segments.at(-2));
+  compactPath = `${root}${compactSegments.join(separator)}`;
+  if (visibleWidth(compactPath) <= columns) return compactPath;
+  let best = truncateToWidth(segments.at(-1) || compactPath, columns, ellipsis.slice(0, columns));
   for (let index = compactSegments.length - 1; index >= 0; index--) {
-    const candidate = `…${separator}${compactSegments.slice(index).join(separator)}`;
+    const candidate = `${ellipsis}${separator}${compactSegments.slice(index).join(separator)}`;
     if (visibleWidth(candidate) > columns) break;
     best = candidate;
   }
@@ -1266,8 +1353,8 @@ function piChocoDashboard(pi: ExtensionAPI) {
         },
         render(width) {
           const detail = width >= DETAIL_FOOTER_WIDTH;
-          const divider = theme.fg("borderMuted", " \xB7 ");
-          const displayedCwd = compactPathForWidth(ctx.cwd, width - (detail ? 4 : 0), !detail);
+          const glyphs = footerGlyphs();
+          const divider = theme.fg("borderMuted", glyphs.divider);
           const line1 = [];
           let titleText = "";
           const line2 = [];
@@ -1281,8 +1368,9 @@ function piChocoDashboard(pi: ExtensionAPI) {
           }
           if (config.footer.showProviderAndModel) {
             const model = detail ? `${currentProvider}/${currentModel}` : currentModel;
-            const thinking = config.footer.showThinkingLevel ? `\xB7${currentThinking}` : "";
-            line1.push(theme.fg("muted", `${model}${thinking}`));
+            const thinking = config.footer.showThinkingLevel ? `${glyphs.divider === " | " ? ":" : "·"}${currentThinking}` : "";
+            const modelText = theme.fg("muted", `${model}${thinking}`);
+            line1.push(detail ? [theme.fg("muted", `${glyphs.model} ${model}${thinking}`), modelText] : modelText);
           }
           if (contextPercent !== void 0) {
             const contextParts = [contextPercent];
@@ -1291,7 +1379,7 @@ function piChocoDashboard(pi: ExtensionAPI) {
               const cacheHitRate = cacheHitRatePart(sessionUsage, theme, true);
               if (cacheHitRate) contextParts.push(cacheHitRate);
             }
-            line1.push(theme.fg("muted", contextParts.join("/")));
+            line1.push(contextParts.map((_, index) => theme.fg("muted", contextParts.slice(0, contextParts.length - index).join("/"))));
           }
           if (detail) line1.push(theme.fg("muted", formatDuration(currentForegroundWorkMs())));
           const modelUsageParts = [];
@@ -1308,28 +1396,8 @@ function piChocoDashboard(pi: ExtensionAPI) {
           } else if (config.footer.showTurnNumber) {
             modelUsageParts.push(`${theme.fg("muted", "turn ")}${theme.fg("muted", String(currentTurn))}`);
           }
-          if (detail) {
-            if (config.footer.showProjectName) {
-              line2.push(`${theme.fg("dim", "\u{1F4C1}")} ${theme.fg("syntaxString", theme.bold(basename(ctx.cwd)))}`);
-            }
-            if (config.footer.showFullCwd) {
-              line2.push(`${theme.fg("dim", "cwd ")}${theme.fg("dim", displayedCwd)}`);
-            }
-            if (config.footer.showGitWorktree) {
-              line2.push(`${theme.fg("dim", "git ")}${styledGitText(gitState, config, theme, true)}`);
-            }
-            if (modelUsageParts.length) {
-              line3.push(`${theme.fg("dim", "usage ")}${modelUsageParts.join(" ")}`);
-            }
-          } else {
-            if (config.footer.showProjectName) {
-              line2.push(theme.fg("syntaxString", basename(ctx.cwd)));
-            } else if (config.footer.showFullCwd) {
-              line2.push(theme.fg("dim", displayedCwd));
-            }
-            if (config.footer.showGitWorktree) {
-              line2.push(styledGitText(gitState, config, theme, true));
-            }
+          if (detail && modelUsageParts.length) {
+            line3.push(`${theme.fg("dim", "usage ")}${modelUsageParts.join(" ")}`);
           }
           if (detail && config.footer.showRuntimePhase) {
             const elapsed = phase === "Ready" ? "" : ` ${formatDuration(performance.now() - phaseStartedMono)}`;
@@ -1337,15 +1405,20 @@ function piChocoDashboard(pi: ExtensionAPI) {
           }
           if (detail && config.footer.showClock) line4.push(formatAbsolute(Date.now(), config));
           const extensionStatuses = footerData.getExtensionStatuses();
+          const inlineMcp = config.footer.showExtensionStatuses && config.footer.line2Visible;
+          const mcpParts = inlineMcp ? footerStatusLines(extensionStatuses.get("mcp")) : [];
+          const extraMetadata = [...(config.footer.line3Visible ? line3 : []), ...line4, ...mcpParts];
+          const contextBudget = Math.max(0, width - visibleWidth(extraMetadata.join(divider)) - (extraMetadata.length ? visibleWidth(divider) : 0));
+          line2.push(...footerContextParts(ctx.cwd, gitState, config, theme, contextBudget, detail, glyphs), ...mcpParts);
           const extensionGroups = config.footer.showExtensionStatuses
-            ? extensionStatusGroups(extensionStatuses)
+            ? extensionStatusGroups(extensionStatuses, inlineMcp ? "mcp" : void 0)
             : [];
           const metadata = config.footer.line2Visible ? line2 : [];
           if (config.footer.line3Visible) metadata.push(...line3);
           metadata.push(...line4);
           const rows = [metadata];
           if (extensionGroups.length) rows.push(extensionGroups.flat());
-          return [alignFooterTitle(titleText, line1, width, divider), ...rows.flatMap((parts) => packFooterParts(parts, width, divider))];
+          return [alignFooterTitle(titleText, line1, width, divider, config.footer.showProviderAndModel), ...rows.flatMap((parts) => packFooterParts(parts, width, divider))];
         },
         dispose() {
           unsubscribe();
@@ -1819,7 +1892,12 @@ function piChocoDashboard(pi: ExtensionAPI) {
 }
 export {
   alignFooterTitle,
+  compactBranchForWidth,
   compactPathForWidth,
+  footerContextParts,
+  footerGlyphs,
+  gitFooterText,
+  styledGitText,
   extensionStatusGroups,
   packFooterParts,
   piChocoDashboard as default
