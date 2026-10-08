@@ -135,7 +135,7 @@ test("footer shrinks long fields without adding rows or overflowing terminal col
   assert.deepEqual(packFooterParts(rows[0], 240, " · "), [rows[0].join(" · ")]);
 });
 
-test("footer keeps the title left and metrics right, hiding metrics first", () => {
+test("footer left-aligns the title and metrics, hiding metrics first", () => {
   const title = "\x1b[36mPCC输入栏状态样式预览\x1b[0m";
   const parts = ["litellm/gpt-6.1-sol·low", "3%/872K/CH35%", "51s"];
   const metrics = parts.join(" · ");
@@ -147,7 +147,7 @@ test("footer keeps the title left and metrics right, hiding metrics first", () =
     }
     if (width >= visibleWidth(title) + 2 + visibleWidth(metrics)) {
       assert.ok(stripVTControlCharacters(row).endsWith(metrics), `width ${width}`);
-      assert.equal(visibleWidth(row), width);
+      assert.equal(stripVTControlCharacters(row), `PCC输入栏状态样式预览  ${metrics}`);
     }
   }
   const wide = stripVTControlCharacters(alignFooterTitle(title, parts, 100, " · "));
@@ -159,7 +159,7 @@ test("footer keeps the title left and metrics right, hiding metrics first", () =
   assert.equal(stripVTControlCharacters(alignFooterTitle(title, parts, visibleWidth(title), " · ")), "PCC输入栏状态样式预览");
   assert.equal(stripVTControlCharacters(alignFooterTitle(title, parts, 8, " · ")), "PCC输入…");
   assert.equal(alignFooterTitle("title", [], 80, " · "), "title");
-  assert.equal(alignFooterTitle("", ["stats"], 8, " · "), "   stats");
+  assert.equal(alignFooterTitle("", ["stats"], 8, " · "), "stats");
 });
 
 test("footer progressively hides numeric detail without clipping values", () => {

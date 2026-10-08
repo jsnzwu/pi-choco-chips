@@ -473,7 +473,7 @@ function alignFooterTitle(title, parts, width, divider, hasModel = true) {
   const right = truncateToWidth(text(), budget, ellipsis.slice(0, budget));
   const rightWidth = visibleWidth(right);
   if (!rightWidth) return left;
-  return left + " ".repeat(Math.max(0, columns - visibleWidth(left) - rightWidth)) + right;
+  return left + (leftWidth ? "  " : "") + right;
 }
 function abbreviatePathSegment(segment) {
   return segment.startsWith(".") ? `.${Array.from(segment.slice(1))[0] || ""}` : Array.from(segment)[0] || "";
