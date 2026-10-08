@@ -352,7 +352,7 @@ function styledGitText(state, config, theme, statusBar = false, compact = false)
 function footerGlyphs(mode = process.env.PI_GLYPH_MODE) {
   return mode === "ascii"
     ? { cwd: "cwd", git: "git", model: "model", divider: " | ", ellipsis: "...", ahead: "ahead", behind: "behind" }
-    : { cwd: "\uF114", git: "\uE725", model: "\uF4BC", divider: " · ", ellipsis: "…", ahead: "↑", behind: "↓" };
+    : { cwd: "\uF114", git: "\uE725", model: "\u{F06A9}", divider: " · ", ellipsis: "…", ahead: "↑", behind: "↓" };
 }
 function compactBranchForWidth(branch, width, ellipsis = "…") {
   const columns = Math.max(0, Math.trunc(width));
