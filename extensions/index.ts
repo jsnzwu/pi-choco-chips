@@ -22,6 +22,7 @@ import {
 import { extractSkillToken, makeSkillBundle } from "./skill-references.ts";
 
 const SETTINGS_ENTRY = "pi-choco-chips:settings";
+const FAST_ENTRY = "pi-choco-chips:fast";
 const SKILL_BUNDLE_TYPE = "pi-choco-chips.skill-bundle";
 const MAX_SKILL_SUGGESTIONS = 20;
 const MAX_TITLE_SOURCE_CHARS = 24_000;
@@ -46,6 +47,19 @@ const FEATURE_SETTINGS = [
     label: "Resume after compaction",
   },
 ];
+
+function isGptModelId(id) {
+  return typeof id === "string" && /(?:^|\/)gpt-/i.test(id);
+}
+
+function supportsFast(model) {
+  return isGptModelId(model?.id) && [
+    "openai-responses",
+    "openai-completions",
+    "openai-codex-responses",
+    "azure-openai-responses",
+  ].includes(model?.api);
+}
 
 function getSkillMap(pi) {
   const skills = new Map();
@@ -357,6 +371,43 @@ export default function piChocoChips(pi: ExtensionAPI) {
   let restoreComposerKeybindings;
   let earlyCompactionInFlight = false;
   let reportedCompactionConfigError = false;
+  let fastEnabled = false;
+
+  const updateFastStatus = (ctx, model = ctx.model) => {
+    if (ctx.hasUI) {
+      ctx.ui.setStatus(FAST_ENTRY, supportsFast(model) ? `fast:${fastEnabled ? "on" : "off"}` : undefined);
+    }
+  };
+  const restoreFast = (ctx) => {
+    fastEnabled = false;
+    for (const entry of ctx.sessionManager.getBranch()) {
+      if (entry.type === "custom" && entry.customType === FAST_ENTRY && typeof entry.data?.enabled === "boolean") {
+        fastEnabled = entry.data.enabled;
+      }
+    }
+    updateFastStatus(ctx);
+  };
+
+  pi.registerCommand("fast", {
+    description: "Toggle GPT priority processing (/fast [on|off|status])",
+    handler: async (args, ctx) => {
+      if (!supportsFast(ctx.model)) {
+        notify(ctx, "Fast mode is only available for GPT models using an OpenAI-compatible API", "warning");
+        return;
+      }
+      const value = args.trim().toLowerCase();
+      if (value && !["on", "off", "status"].includes(value)) {
+        notify(ctx, "Usage: /fast [on|off|status]", "warning");
+        return;
+      }
+      if (value !== "status") {
+        fastEnabled = value ? value === "on" : !fastEnabled;
+        pi.appendEntry(FAST_ENTRY, { enabled: fastEnabled });
+      }
+      updateFastStatus(ctx);
+      notify(ctx, `Fast mode: ${fastEnabled ? "on (priority processing; extra charges may apply)" : "off (provider default)"}`);
+    },
+  });
 
   pi.registerCommand("retitle", {
     description: "Generate a new title from the current session",
@@ -423,8 +474,18 @@ export default function piChocoChips(pi: ExtensionAPI) {
     },
   });
 
+  pi.on("before_provider_request", ({ payload }, ctx) => {
+    if (!fastEnabled || !supportsFast(ctx.model) || !payload || typeof payload !== "object" || Array.isArray(payload)) return;
+    if (!("model" in payload) || !isGptModelId(payload.model)) return;
+    return { ...payload, service_tier: "priority" };
+  });
+
+  pi.on("model_select", (event, ctx) => updateFastStatus(ctx, event.model));
+  pi.on("session_tree", (_event, ctx) => restoreFast(ctx));
+
   pi.on("session_start", async (_event, ctx) => {
     restoreFeatures(ctx, features);
+    restoreFast(ctx);
 
     if (ctx.mode === "tui") {
       ctx.ui.addAutocompleteProvider((current) =>
@@ -444,6 +505,7 @@ export default function piChocoChips(pi: ExtensionAPI) {
   });
 
   pi.on("session_shutdown", (_event, ctx) => {
+    if (ctx.hasUI) ctx.ui.setStatus(FAST_ENTRY, undefined);
     for (const timer of pendingBundleTimers) clearTimeout(timer);
     pendingBundleTimers.clear();
     earlyCompactionInFlight = false;
