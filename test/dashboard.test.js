@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 import { stripVTControlCharacters } from "node:util";
 import { parse } from "smol-toml";
@@ -26,6 +28,7 @@ function createDashboardHarness() {
   const entryRenderers = new Map();
   const pi = {
     events: createEventBus(),
+    appendEntry() {},
     on(event, handler) {
       handlers.set(event, handler);
     },
@@ -230,10 +233,11 @@ test("footer retains cwd and git identities without narrow-screen labels", () =>
   assert.equal(styledGitText(state, config, theme, true, true), "main*");
 });
 
-test("footer renders extension statuses without interpreting their keys", () => {
+test("footer renders external statuses but reserves PCC fast status for the model field", () => {
   const statuses = new Map([
     ["first-extension", "ready\nidle"],
     ["second-extension", "working"],
+    ["pi-choco-chips:fast", "fast:on"],
   ]);
 
   assert.deepEqual(extensionStatusGroups(statuses), [
@@ -253,9 +257,74 @@ test("dashboard uses Pi semantic colors for git and thinking-level activity", ()
   assert.match(source, /theme\.getThinkingBorderColor\(meta\.thinkingLevel \|\| "off"\)/);
   assert.match(source, /theme\.getThinkingBorderColor\(currentThinking\)/);
   assert.match(source, /glyphs\.model/);
-  assert.equal(source.includes('const modelText = theme.fg("muted", `${model}${thinking}`);'), true);
   assert.doesNotMatch(source, /theme\.bold\(`\(\$\{currentThinking\}\)`\)/);
   assert.match(source, /thinkingLevel: currentThinking/);
+});
+
+test("dashboard displays model IDs and fast inline without a duplicate status row", async (t) => {
+  const agentDir = mkdtempSync(join(tmpdir(), "pcc-footer-"));
+  const previousAgentDir = process.env.PI_CODING_AGENT_DIR;
+  let harness;
+  try {
+    process.env.PI_CODING_AGENT_DIR = agentDir;
+    harness = createDashboardHarness();
+  } finally {
+    if (previousAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
+    else process.env.PI_CODING_AGENT_DIR = previousAgentDir;
+    rmSync(agentDir, { recursive: true, force: true });
+  }
+  const statuses = new Map([["pi-choco-chips:fast", "fast:on"]]);
+  const theme = {
+    fg: (_color, text) => text,
+    bold: (text) => text,
+    getThinkingBorderColor: () => (text) => text,
+  };
+  const tui = { requestRender() {} };
+  const footerData = {
+    getExtensionStatuses: () => statuses,
+    onBranchChange: () => () => {},
+  };
+  let footer;
+  let header;
+  const ctx = {
+    mode: "tui", hasUI: true, cwd: "/home/demo/project", thinkingLevel: "max",
+    model: { provider: "litellm", id: "gpt-6.1-sol" },
+    sessionManager: { getBranch: () => [], getSessionName: () => "Demo" },
+    getContextUsage: () => undefined,
+    ui: {
+      theme,
+      setFooter: (factory) => { footer?.dispose(); footer = factory?.(tui, theme, footerData); },
+      setHeader: (factory) => { header?.dispose(); header = factory?.(tui, theme); },
+      getEditorComponent: () => () => {},
+      onTerminalInput: () => () => {},
+      setHiddenThinkingLabel() {}, setWorkingVisible() {}, setWorkingIndicator() {}, setWorkingMessage() {}, notify() {},
+    },
+  };
+  t.after(() => harness.handlers.get("session_shutdown")({ reason: "quit" }, ctx));
+  await harness.handlers.get("session_start")({ reason: "startup" }, ctx);
+
+  for (const width of [40, 59, 60, 100, 160]) {
+    const rows = footer.render(width);
+    assert.equal(rows.length, 2);
+    assert.match(rows[0], /gpt-6\.1-sol[·:]max\(fast\)/);
+    assert.doesNotMatch(rows.join("\n"), /litellm\/|fast:on|fast:off/);
+    for (const row of rows) assert.ok(visibleWidth(row) <= width);
+  }
+  assert.doesNotMatch(header.render(120).find((row) => row.startsWith("Model")), /litellm\//);
+  const meta = harness.entryRenderers.get("pi-choco-chips.dashboard.meta")({
+    data: { kind: "assistant", provider: "litellm", model: "gpt-6.1-sol", thinkingLevel: "max", timestamp: 0, turn: 1 },
+  }, {}, theme).render(120).join("\n");
+  assert.match(meta, /gpt-6\.1-sol/);
+  assert.doesNotMatch(meta, /litellm\//);
+
+  statuses.set("pi-choco-chips:fast", "fast:off");
+  assert.match(footer.render(100)[0], /gpt-6\.1-sol[·:]max/);
+  assert.doesNotMatch(footer.render(100).join("\n"), /\(fast\)|fast:off/);
+  statuses.delete("pi-choco-chips:fast");
+  ctx.model = { provider: "litellm", id: "deepseek-v4-pro" };
+  harness.handlers.get("model_select")({ model: ctx.model, source: "command" }, ctx);
+  assert.match(footer.render(100)[0], /deepseek-v4-pro/);
+  assert.doesNotMatch(footer.render(100).join("\n"), /litellm\/|\(fast\)/);
 });
 
 test("dashboard registers its renderers and lifecycle handlers", () => {

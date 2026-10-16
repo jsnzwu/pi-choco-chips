@@ -29,6 +29,7 @@ const META_TYPE = "pi-choco-chips.dashboard.meta";
 const TOOL_TIMING_TYPE = "pi-choco-chips.dashboard.tool-timing";
 const TITLE_STATE_TYPE = "pi-choco-chips.dashboard.title-state";
 const SKILL_BUNDLE_TYPE = "pi-choco-chips.skill-bundle";
+const FAST_STATUS_KEY = "pi-choco-chips:fast";
 const DETAIL_FOOTER_WIDTH = 60;
 const EMPTY_USAGE = {
   input: 0,
@@ -436,7 +437,7 @@ function footerStatusLines(status) {
 }
 function extensionStatusGroups(statuses, excludeKey) {
   return [...statuses.entries()].flatMap(([key, status]) => (
-    key === excludeKey ? [] : footerStatusLines(status).map((line) => [line])
+    key === excludeKey || key === FAST_STATUS_KEY ? [] : footerStatusLines(status).map((line) => [line])
   ));
 }
 function packFooterParts(parts, width, divider) {
@@ -565,7 +566,7 @@ function renderMeta(meta, width, theme, config, thinkingSummaryVisible) {
   if (meta.kind === "assistant") {
     const time2 = timeParts(meta.timestamp, meta.relativeMs, config).join(" ");
     const role2 = `${config.transcript.roles.assistant} #${meta.turn}.${meta.segment || 1}`;
-    const model = [meta.provider, meta.model].filter(Boolean).join("/");
+    const model = meta.model || "";
     const stats = [];
     if (model) stats.push(theme.fg("text", model));
     if (meta.thinkingLevel) stats.push(theme.fg("muted", meta.thinkingLevel));
@@ -1307,7 +1308,7 @@ function piChocoDashboard(pi: ExtensionAPI) {
           if (config.header.showTitle) lines.push(`${label("Title")} ${title || basename(ctx.cwd)}`);
           if (config.header.showGit) lines.push(`${label("Git")} ${styledGitText(gitState, config, theme)}`);
           if (config.header.showModel) {
-            lines.push(`${label("Model")} ${currentProvider}/${currentModel} \xB7 ${currentThinking}`);
+            lines.push(`${label("Model")} ${currentModel} \xB7 ${currentThinking}`);
           }
           if (config.header.showDisplayHints) {
             lines.push(`${label("Display")} Ctrl+O tools \xB7 Ctrl+T thinking`);
@@ -1354,6 +1355,7 @@ function piChocoDashboard(pi: ExtensionAPI) {
         render(width) {
           const detail = width >= DETAIL_FOOTER_WIDTH;
           const glyphs = footerGlyphs();
+          const extensionStatuses = footerData.getExtensionStatuses();
           const divider = theme.fg("borderMuted", glyphs.divider);
           const line1 = [];
           let titleText = "";
@@ -1367,10 +1369,11 @@ function piChocoDashboard(pi: ExtensionAPI) {
             titleText = thinkingColor(theme.bold(title || basename(ctx.cwd)));
           }
           if (config.footer.showProviderAndModel) {
-            const model = detail ? `${currentProvider}/${currentModel}` : currentModel;
             const thinking = config.footer.showThinkingLevel ? `${glyphs.divider === " | " ? ":" : "·"}${currentThinking}` : "";
-            const modelText = theme.fg("muted", `${model}${thinking}`);
-            line1.push(detail ? [theme.fg("muted", `${glyphs.model} ${model}${thinking}`), modelText] : modelText);
+            const fast = extensionStatuses.get(FAST_STATUS_KEY) === "fast:on" ? "(fast)" : "";
+            const model = `${currentModel}${thinking}${fast}`;
+            const modelText = theme.fg("muted", model);
+            line1.push(detail ? [theme.fg("muted", `${glyphs.model} ${model}`), modelText] : modelText);
           }
           if (contextPercent !== void 0) {
             const contextParts = [contextPercent];
@@ -1404,7 +1407,6 @@ function piChocoDashboard(pi: ExtensionAPI) {
             line4.push(`${phase}${elapsed}`);
           }
           if (detail && config.footer.showClock) line4.push(formatAbsolute(Date.now(), config));
-          const extensionStatuses = footerData.getExtensionStatuses();
           const inlineMcp = config.footer.showExtensionStatuses && config.footer.line2Visible;
           const mcpParts = inlineMcp ? footerStatusLines(extensionStatuses.get("mcp")) : [];
           const extraMetadata = [...(config.footer.line3Visible ? line3 : []), ...line4, ...mcpParts];

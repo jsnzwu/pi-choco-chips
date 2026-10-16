@@ -39,7 +39,7 @@ function createExtensionHarness() {
       return skills;
     },
     appendEntry(type, data) {
-      entries.push({ type, data });
+      entries.push({ type: "custom", customType: type, data });
     },
     sendMessage(message, options) {
       messages.push({ message, options });
@@ -62,6 +62,134 @@ const context = {
 };
 
 const waitForDeferredDispatch = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+const FAST_ENTRY = "pi-choco-chips:fast";
+
+function createFastHarness(branch = []) {
+  const harness = createExtensionHarness();
+  const statuses = new Map();
+  const notices = [];
+  const ctx = {
+    hasUI: true,
+    mode: "rpc",
+    model: { provider: "proxy", id: "gpt-5.4", api: "openai-responses" },
+    sessionManager: { getBranch: () => branch },
+    ui: {
+      notify: (message, type) => notices.push({ message, type }),
+      setStatus: (key, text) => text === undefined ? statuses.delete(key) : statuses.set(key, text),
+    },
+  };
+  return { ...harness, ctx, statuses, notices };
+}
+
+test("fast toggles priority requests and status without changing the original payload", async () => {
+  const harness = createFastHarness();
+  const { ctx, commands, handlers, statuses, entries, notices } = harness;
+  await handlers.get("session_start")({}, ctx);
+  const fast = commands.get("fast").handler;
+  const request = handlers.get("before_provider_request");
+  const payload = { model: ctx.model.id, input: "Hello", reasoning: { effort: "high" } };
+
+  assert.equal(statuses.get(FAST_ENTRY), "fast:off");
+  assert.equal(request({ payload }, ctx), undefined);
+  await fast("status", ctx);
+  assert.equal(entries.length, 0);
+
+  await fast("", ctx);
+  assert.equal(statuses.get(FAST_ENTRY), "fast:on");
+  assert.deepEqual(request({ payload }, ctx), { ...payload, service_tier: "priority" });
+  assert.equal(Object.hasOwn(payload, "service_tier"), false);
+  assert.match(notices.at(-1).message, /charges/i);
+
+  await fast("on", ctx);
+  assert.equal(statuses.get(FAST_ENTRY), "fast:on");
+  const savedCount = entries.length;
+  await fast("status", ctx);
+  await fast("on off", ctx);
+  assert.equal(entries.length, savedCount);
+  assert.equal(statuses.get(FAST_ENTRY), "fast:on");
+  assert.match(notices.at(-1).message, /Usage: \/fast/);
+
+  await fast("OFF", ctx);
+  assert.equal(statuses.get(FAST_ENTRY), "fast:off");
+  assert.equal(request({ payload: { ...payload, service_tier: "flex" } }, ctx), undefined);
+  await fast("", ctx);
+  await fast("", ctx);
+  assert.equal(statuses.get(FAST_ENTRY), "fast:off");
+  assert.deepEqual(entries.at(-1), {
+    type: "custom", customType: FAST_ENTRY, data: { enabled: false },
+  });
+});
+
+test("fast supports GPT across OpenAI APIs but never follows a non-GPT model", async () => {
+  const { ctx, commands, handlers, statuses, entries, notices } = createFastHarness();
+  const fast = commands.get("fast").handler;
+  const request = handlers.get("before_provider_request");
+
+  for (const [api, id] of [
+    ["openai-responses", "gpt-5.4"],
+    ["openai-completions", "openai/gpt-4.1"],
+    ["openai-codex-responses", "gpt-5.3-codex"],
+    ["azure-openai-responses", "gpt-5.4"],
+  ]) {
+    ctx.model = { provider: "proxy", api, id };
+    await fast("on", ctx);
+    assert.equal(request({ payload: { model: id } }, ctx).service_tier, "priority", api);
+  }
+
+  const savedCount = entries.length;
+  for (const model of [
+    { id: "claude-sonnet-4-6", api: "openai-responses" },
+    { id: "gemini-2.5-pro", api: "google-generative-ai" },
+    { id: "not-gpt-5.4", api: "openai-responses" },
+    { id: "gpt-5.4", api: "anthropic-messages" },
+    undefined,
+  ]) {
+    ctx.model = model;
+    handlers.get("model_select")({ model }, ctx);
+    assert.equal(statuses.has(FAST_ENTRY), false);
+    assert.equal(request({ payload: { model: "gpt-5.4" } }, ctx), undefined);
+    await fast("", ctx);
+    assert.match(notices.at(-1).message, /only.*GPT/);
+    assert.equal(entries.length, savedCount);
+  }
+
+  ctx.model = { id: "gpt-5.4", api: "openai-responses" };
+  handlers.get("model_select")({ model: ctx.model }, ctx);
+  assert.equal(statuses.get(FAST_ENTRY), "fast:on");
+  for (const payload of [null, [], "payload", {}, { model: "claude-sonnet-4-6" }]) {
+    assert.equal(request({ payload }, ctx), undefined);
+  }
+});
+
+test("fast restores the active branch and clears state for a new session", async () => {
+  const original = createFastHarness();
+  await original.commands.get("fast").handler("on", original.ctx);
+  const restored = createFastHarness(original.entries);
+  const { ctx, commands, handlers, statuses } = restored;
+  await handlers.get("session_start")({ reason: "reload" }, ctx);
+  assert.equal(statuses.get(FAST_ENTRY), "fast:on");
+
+  ctx.sessionManager.getBranch = () => [
+    ...original.entries,
+    { type: "custom", customType: FAST_ENTRY, data: { enabled: false } },
+  ];
+  handlers.get("session_tree")({}, ctx);
+  assert.equal(statuses.get(FAST_ENTRY), "fast:off");
+
+  ctx.sessionManager.getBranch = () => original.entries;
+  handlers.get("session_tree")({}, ctx);
+  assert.equal(statuses.get(FAST_ENTRY), "fast:on");
+  handlers.get("session_shutdown")({}, ctx);
+  assert.equal(statuses.has(FAST_ENTRY), false);
+
+  ctx.sessionManager.getBranch = () => [];
+  await handlers.get("session_start")({ reason: "new" }, ctx);
+  assert.equal(statuses.get(FAST_ENTRY), "fast:off");
+  await commands.get("choco").handler("on", ctx);
+  assert.equal(handlers.get("before_provider_request")({ payload: { model: "gpt-5.4" } }, ctx), undefined);
+  assert.equal(restored.entries.some((entry) => entry.customType === FAST_ENTRY), false);
+});
 
 test("applies and restores the shared composer keybindings", () => {
   let userBindings = {

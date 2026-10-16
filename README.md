@@ -9,6 +9,7 @@ Post-start enhancements for [pi](https://pi.dev), packaged as ordinary Pi extens
 - `/dashboard` — open a TUI settings page that toggles footer lines 2 and 3 and persists the choice.
 - Compact transcript spacing and Bash command styling with runtime Pi capability detection. Unsupported internals disable only the affected feature and emit a warning.
 - `/retitle` — generate a concise title from the current session.
+- `/fast` — toggle GPT priority processing, with a session-persistent switch and an inline `(fast)` suffix beside the model and thinking level.
 - Compact at 80% context or 300K tokens, whichever comes first, before the next provider request, then resume the active turn automatically. Both numbers are settings, not constants; see [Compaction settings](#compaction-settings). Manual or threshold compaction after an assistant error also resumes; completed responses, Pi's overflow retry, and queued user messages are left alone.
 - Multiple `/skill:name` or `$skill-name` references in one prompt, delivered as one ordered custom message.
 - Skill completion after `/skill:` or `$` anywhere in the current prompt.
@@ -41,13 +42,13 @@ compactSameTurnSpacing = true
 
 Only TOML configuration is supported; `pi-choco-setting.json` is ignored. Convert existing JSON overrides to TOML before restarting Pi. Keep only fields you want to override rather than copying bundled defaults. `/dashboard` saves only differences from the defaults and preserves other settings, but normalizes TOML formatting and does not retain comments. Returning a setting to its default removes that override.
 
-User settings are deep-merged over the bundled defaults. The first footer line is left-aligned: the title is followed by two spaces, then the model and metrics. The title has priority when allocating width; no padding pushes the metrics to the right edge. As space decreases, it hides elapsed time, cache hit rate, context capacity, and context percentage in that order; numeric fields are displayed whole or omitted, not truncated. Compact presentation below 60 columns omits detail metrics and field labels while retaining the configured path and Git branch. Detail presentation restores configured information as space permits. Footer line 3, containing detailed token/cache/cost usage, is hidden by default and remains available through `/dashboard`.
+User settings are deep-merged over the bundled defaults. The first footer line is left-aligned: the title is followed by two spaces, then the model and metrics. Model labels in the header, footer, and assistant metadata show the model ID without a provider prefix, such as `gpt-6.1-sol` instead of `litellm/gpt-6.1-sol`; recorded provider identities and routing remain unchanged. The title has priority when allocating width; no padding pushes the metrics to the right edge. As space decreases, it hides elapsed time, cache hit rate, context capacity, and context percentage in that order; numeric fields are displayed whole or omitted, not truncated. Compact presentation below 60 columns omits detail metrics and field labels while retaining the configured path and Git branch. Detail presentation restores configured information as space permits. Footer line 3, containing detailed token/cache/cost usage, is hidden by default and remains available through `/dashboard`.
 
 Paths shorten leading directories to initials without filesystem reads and preserve the final two directories when possible, for example `/mnt/d/Workspace/source-code/projects/demo-app` becomes `/m/d/W/s/projects/demo-app`. Tighter widths shorten the penultimate directory and then omit leading directories. Git compression first hides zero counters and the field label, abbreviates leading branch words separated by `/`, `-`, or `_`, and omits nonzero counters only when needed. Branch suffix words and the dirty `*` marker take priority; counts are never partially displayed. Configured path and Git fields do not disappear merely because the terminal crosses the compact breakpoint.
 
 The footer defaults to Nerd Font folder (U+F114), branch (U+E725), and model/robot (U+F06A9) glyphs. Project names have no emoji prefix. Labels and icons disappear before sacrificing field content. Start Pi with `PI_GLYPH_MODE=ascii` for ASCII footer labels, separators, Git arrows, and ellipses; other extension-owned surfaces and user content are unchanged. This is a PCC/MiAW convention, not automatic font detection.
 
-Built-in footer rows remain bounded single lines. Extension statuses follow on their own bounded row, except that the native `mcp` status is placed on the second row without duplication. Reload Pi after changing the extension source; a full restart is recommended if an already-installed custom component still shows the old rendering. Settings changes require restarting Pi.
+Built-in footer rows remain bounded single lines. Extension statuses follow on their own bounded row, except that the native `mcp` status is placed on the second row and PCC's fast state is merged into the model field, both without duplication. Reload Pi after changing the extension source; a full restart is recommended if an already-installed custom component still shows the old rendering. Settings changes require restarting Pi.
 
 ### Compaction settings
 
@@ -88,6 +89,21 @@ Use $git-comment-gen and /skill:ponytail in the same prompt.
 ```
 
 The `/choco` toggles are stored as session entries, so they survive `/reload` and follow forked sessions without changing host configuration.
+
+### GPT fast mode
+
+```text
+/fast          # Toggle
+/fast on
+/fast off
+/fast status
+```
+
+Fast mode starts off in a new session. It is available only when the selected model ID starts with `gpt-`, optionally after a provider prefix such as `openai/`, and uses `openai-responses`, `openai-completions`, `openai-codex-responses`, or `azure-openai-responses`. This includes compatible proxy providers; the provider name does not need to be `openai`.
+
+When enabled, PCC adds `service_tier: "priority"` to subsequent GPT agent requests without changing the model or thinking level. Turning it off leaves the provider's original request settings unchanged. The PCC status line shows `gpt-6.1-sol·max(fast)` when enabled and `gpt-6.1-sol·max` when disabled. The suffix belongs to the model field, so it does not occupy a separate status item or depend on `dashboard.footer.showExtensionStatuses`. With the PCC dashboard disabled, Pi's native footer still receives `fast:on/off`. Other models reject `/fast` and hide the status. Switching back to GPT restores the session's switch value. The value follows the active session branch across reloads, resumes, forks, and tree navigation; `/choco on/off` does not change it.
+
+The status indicates the requested mode, not confirmation of the upstream processing tier. The model, account, and any proxy must support priority processing, and extra charges may apply. See OpenAI's [Fast mode documentation](https://developers.openai.com/api/docs/guides/priority-processing). Run `/reload` after updating this command.
 
 ## Install locally
 
