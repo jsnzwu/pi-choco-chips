@@ -47,11 +47,12 @@ function createDashboardHarness() {
   return { handlers, commands, messageRenderers, entryRenderers };
 }
 
-test("package loads the shortcut, dashboard, and theme resources", () => {
+test("package loads the shortcut, dashboard, compact tools, and theme resources", () => {
   const packageJson = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
   assert.deepEqual(packageJson.pi.extensions, [
     "./extensions/index.ts",
     "./extensions/dashboard.ts",
+    "./extensions/compact-tools.ts",
   ]);
   assert.deepEqual(packageJson.pi.themes, ["./themes/adam-dark.json"]);
   assert.equal(packageJson.files.includes("themes"), true);
