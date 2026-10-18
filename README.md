@@ -8,6 +8,7 @@ Post-start enhancements for [pi](https://pi.dev), packaged as ordinary Pi extens
 - Bundled `adam-dark` Pi theme with an Atom One Dark palette and semantic dashboard colors.
 - `/dashboard` — open a TUI settings page that toggles footer lines 2 and 3 and persists the choice.
 - Compact transcript spacing and Bash command styling with runtime Pi capability detection. Unsupported internals disable only the affected feature and emit a warning.
+- Theme-aware built-in tool rows with a short goal, status, read line counts, and live Bash timings; consecutive Bash calls share a group, and `Ctrl+O` keeps their goals above native details.
 - `/retitle` — generate a concise title from the current session.
 - `/fast` — toggle GPT priority processing, with a session-persistent switch and an inline `(fast)` suffix beside the model and thinking level.
 - Compact at 80% context or 300K tokens, whichever comes first, before the next provider request, then resume the active turn automatically. Both numbers are settings, not constants; see [Compaction settings](#compaction-settings). Manual or threshold compaction after an assistant error also resumes; completed responses, Pi's overflow retry, and queued user messages are left alone.
@@ -16,7 +17,7 @@ Post-start enhancements for [pi](https://pi.dev), packaged as ordinary Pi extens
 - Consistent composer controls: Enter submits or steers an active turn, Alt+Enter queues a follow-up, and Shift+Enter inserts a newline. Ctrl+J remains the terminal-safe newline fallback.
 - `/choco` — open a TUI settings page for all shortcut enhancements; command-line status and toggles remain available.
 
-The dashboard, shortcut extension, and `adam-dark` theme are loaded from this package as one post-start enhancement layer. Select `adam-dark` through `/settings` or set `"theme": "adam-dark"` in Pi settings.
+The dashboard, shortcut extension, compact tool display, and `adam-dark` theme are loaded from this package as one post-start enhancement layer. Select `adam-dark` through `/settings` or set `"theme": "adam-dark"` in Pi settings.
 
 ## Settings
 
@@ -49,6 +50,18 @@ Paths shorten leading directories to initials without filesystem reads and prese
 The footer defaults to Nerd Font folder (U+F114), branch (U+E725), and model/robot (U+F06A9) glyphs. Project names have no emoji prefix. Labels and icons disappear before sacrificing field content. Start Pi with `PI_GLYPH_MODE=ascii` for ASCII footer labels, separators, Git arrows, and ellipses; other extension-owned surfaces and user content are unchanged. This is a PCC/MiAW convention, not automatic font detection.
 
 Built-in footer rows remain bounded single lines. Extension statuses follow on their own bounded row, except that the native `mcp` status is placed on the second row and PCC's fast state is merged into the model field, both without duplication. Reload Pi after changing the extension source; a full restart is recommended if an already-installed custom component still shows the old rendering. Settings changes require restarting Pi.
+
+### Compact tool display
+
+The bundled `compact-tools` extension covers `read`, `bash`, `edit`, `write`, `grep`, `find`, and `ls`. Each collapsed row shows a short model-written goal and its running, success, or error status. Colors come from Pi's `toolTitle`, `text`, `muted`, `success`, and `error` theme roles. `Ctrl+O` keeps that header and adds the native command/path, output, or diff below it; existing tool truncation limits still apply.
+
+Read rows report returned text lines, using the native output-line count when truncated. Images and errors have separate labels rather than misleading line counts. Bash rows show elapsed whole seconds, or `<1s`, using Pi's existing refresh clock and recorded result duration. Historical results without timing data omit the duration. No extra timer or model request is added.
+
+Consecutive Bash calls share a running/completed command-count header while retaining individual goals, states, and timings. Invisible message components do not break a group; visible text and other tools do. Calls are not concatenated, reordered, or re-executed. The adapter targets Pi 1.3's tool-row state and mouse layout; unknown row layouts remain ungrouped. Original components and session records remain intact, including keyboard and mouse expansion.
+
+The optional `reasoning` argument is a brief display label in the user's language, not detailed model reasoning. Historical or nested calls may omit it. There is no fixed character limit or length setting: long labels are clipped only for display, with space reserved for statistics. Command and file arguments are not shortened. The extension retains Pi's built-in executors and detail renderers, using user-level shell and image preferences; it does not load project-level execution overrides. There is no output summarization model, image generator, or extra dependency. MCP and third-party tools keep their own display.
+
+Disable external renderer packages such as `pi-tidy-tools` before enabling this extension: both register the same built-in tools. Use `pi config` to disable PCC's `compact-tools` resource if another package needs to own those tools, then run `/reload`.
 
 ### Compaction settings
 
@@ -116,7 +129,7 @@ pi install .
 For development without installing:
 
 ```bash
-pi -e ./extensions/index.ts -e ./extensions/dashboard.ts
+pi -e ./extensions/index.ts -e ./extensions/dashboard.ts -e ./extensions/compact-tools.ts
 ```
 
 After changing only shortcut logic, `/reload` is sufficient. After changing dashboard rendering or settings, restart Pi.
@@ -127,6 +140,10 @@ Use repository-relative paths or synthetic fixtures such as `/home/demo/project`
 
 PCC is not a redaction layer. Its local UI can display working directories, Git branches, task identifiers, and extension-provided status text. Automatic title generation and `/retitle` send selected conversation text to the currently selected model; set `dashboard.title.autoGenerate` to `false` to disable automatic title generation. Review screenshots and exported sessions before sharing them.
 
+
+## Credits
+
+The goal-first compact tool display is inspired by [pi-tidy-tools](https://github.com/mikeyobrien/pi-tidy-tools) by Mikey O'Brien. Bash grouping follows the presentation-only grouping checked in Claude Code 2.1.260. PCC implements these behaviors independently using Pi's native tools and components; it does not bundle either implementation's code.
 
 ## Package
 
