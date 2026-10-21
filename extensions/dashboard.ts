@@ -435,6 +435,12 @@ function footerStatusLines(status) {
   if (typeof status !== "string") return [];
   return status.split(/\r?\n/).map((row) => row.trim()).filter(Boolean);
 }
+function footerExtensionStatuses(statuses) {
+  if (!footerStatusLines(statuses.get("aw-task")).length) return statuses;
+  const visible = new Map(statuses);
+  visible.delete("mcp");
+  return visible;
+}
 function extensionStatusGroups(statuses, excludeKey) {
   return [...statuses.entries()].flatMap(([key, status]) => (
     key === excludeKey || key === FAST_STATUS_KEY ? [] : footerStatusLines(status).map((line) => [line])
@@ -1355,7 +1361,7 @@ function piChocoDashboard(pi: ExtensionAPI) {
         render(width) {
           const detail = width >= DETAIL_FOOTER_WIDTH;
           const glyphs = footerGlyphs();
-          const extensionStatuses = footerData.getExtensionStatuses();
+          const extensionStatuses = footerExtensionStatuses(footerData.getExtensionStatuses());
           const divider = theme.fg("borderMuted", glyphs.divider);
           const line1 = [];
           let titleText = "";
@@ -1897,6 +1903,7 @@ export {
   compactBranchForWidth,
   compactPathForWidth,
   footerContextParts,
+  footerExtensionStatuses,
   footerGlyphs,
   gitFooterText,
   styledGitText,

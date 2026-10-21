@@ -6,6 +6,8 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { Container, Text, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { BASH_ROW, installBashGroups } from "./bash-groups.ts";
+import { installCodemodeRendering } from "./codemode-tools.ts";
+import { stopToolPulses, toolMark } from "./tool-status.ts";
 
 const EMPTY = new Text("", 0, 0);
 
@@ -24,7 +26,7 @@ function summary(name, context) {
   return `${count} line${count === 1 ? "" : "s"}`;
 }
 
-export function compactTool(tool) {
+export function compactTool(tool, getThinkingLevel?: () => string) {
   // Keep each native renderer's component and state across expand/collapse.
   const nativeRender = (slot, args, context) => {
     const key = `pcc:${slot}`;
@@ -46,18 +48,14 @@ export function compactTool(tool) {
     },
     renderShell: "self",
     renderCall(args, theme, context) {
+      const mark = toolMark(context);
       const native = nativeRender("renderCall", [args, theme], context);
-      if (tool.name === "bash") {
-        context.state[BASH_ROW] = { context, theme };
-        // Start Pi's existing refresh clock even before the command produces output.
-        if (context.executionStarted && context.isPartial && !context.state.interval)
-          nativeRender("renderResult", [{ content: [] }, { expanded: context.expanded, isPartial: true }, theme], context);
-      }
-      const color = context.isPartial ? "muted" : context.isError ? "error" : "success";
-      const mark = context.isPartial ? "…" : context.isError ? "✗" : "✓";
-      const icon = tool.name === "bash" ? "⚡" : ["read", "grep", "find", "ls"].includes(tool.name) ? "📖" : "✏️";
+      const color = context.isError ? "error" : context.isPartial ? context.executionStarted ? "accent" : "muted" : "success";
+      const colorize = color === "accent" && getThinkingLevel
+        ? theme.getThinkingBorderColor(getThinkingLevel()) : (text) => theme.fg(color, text);
+      if (tool.name === "bash") context.state[BASH_ROW] = { context, theme, colorize };
       const goal = stripVTControlCharacters(String(args.reasoning || args.path || args.pattern || "")).replace(/\s+/g, " ").trim();
-      const label = `${theme.fg(color, mark)} ${theme.fg("toolTitle", theme.bold(`${icon} ${tool.name}`))}${goal ? ` ${theme.fg("text", goal)}` : ""}`;
+      const label = `${colorize(mark)} ${theme.fg("toolTitle", theme.bold(tool.name))}${goal ? ` ${theme.fg("text", goal)}` : ""}`;
       const header = {
         render(width) {
           if (width < 1) return [];
@@ -85,6 +83,8 @@ export function compactTool(tool) {
 
 export default function compactTools(pi) {
   installBashGroups();
+  pi.on("session_shutdown", stopToolPulses);
+  installCodemodeRendering(pi);
   const cwd = process.cwd();
   // Never read execution settings from an untrusted project during extension loading.
   const settings = SettingsManager.create(cwd, undefined, { projectTrusted: false });
@@ -94,5 +94,5 @@ export default function compactTools(pi) {
     createEditToolDefinition(cwd), createWriteToolDefinition(cwd),
     createGrepToolDefinition(cwd), createFindToolDefinition(cwd), createLsToolDefinition(cwd),
   ];
-  for (const tool of tools) pi.registerTool(compactTool(tool));
+  for (const tool of tools) pi.registerTool(compactTool(tool, () => pi.getThinkingLevel()));
 }

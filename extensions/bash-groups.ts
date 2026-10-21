@@ -1,4 +1,5 @@
 import { Box, Container, TruncatedText } from "@earendil-works/pi-tui";
+import { toolMark } from "./tool-status.ts";
 
 export const BASH_ROW = Symbol.for("pi-choco-chips.bash-row");
 const PATCH = Symbol.for("pi-choco-chips.bash-groups");
@@ -27,10 +28,12 @@ function groupedChildren(children, width) {
       const pending = info.some((item) => item.context.isPartial);
       const failed = info.some((item) => item.context.isError);
       const theme = info[0].theme;
-      const color = failed ? "error" : pending ? "muted" : "success";
-      const mark = pending ? "…" : failed ? "✗" : "✓";
+      const running = info.find((item) => item.context.isPartial && item.context.executionStarted && !item.context.isError);
+      const color = failed ? "error" : running ? "accent" : pending ? "muted" : "success";
+      const mark = pending ? running ? toolMark(running.context) : "·" : failed ? "✗" : "✓";
+      const marker = !failed && running?.colorize ? running.colorize(mark) : theme.fg(color, mark);
       output.push(new TruncatedText(
-        `${theme.fg(color, mark)} ${theme.fg("toolTitle", theme.bold(`${pending ? "Running" : "Ran"} ${commands.length} shell commands`))}`,
+        `${marker} ${theme.fg("toolTitle", theme.bold(`${pending ? "Running" : "Ran"} ${commands.length} shell commands`))}`,
         0, 0,
       ));
       const body = new Box(width >= 8 ? 2 : 0, 0);
