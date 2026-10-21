@@ -11,9 +11,10 @@ import {
 import { Container, Text, visibleWidth } from "@earendil-works/pi-tui";
 import compactTools, { compactTool } from "../extensions/compact-tools.ts";
 import { installBashGroups } from "../extensions/bash-groups.ts";
+import { stopToolPulses } from "../extensions/tool-status.ts";
 
 const directory = mkdtempSync(join(tmpdir(), "pcc-compact-"));
-after(() => rmSync(directory, { recursive: true, force: true }));
+after(() => { stopToolPulses(); rmSync(directory, { recursive: true, force: true }); });
 initTheme("dark", false);
 const rows = (component, width = 100) => component.render(width)
   .map((line) => stripVTControlCharacters(line).trimEnd()).filter((line) => line.trim());
@@ -43,20 +44,73 @@ test("compact tools preserve native schemas, executors, metadata, and optional i
 test("rows use semantic theme colors and sanitize goals without fixed ANSI colors", () => {
   const tool = compactTool(createReadToolDefinition(directory));
   const args = { path: "fixture.txt", reasoning: "Check\n\u001b[35mconfiguration\u001b[0m" };
-  const context = { state: {}, args, cwd: directory, expanded: false, argsComplete: false };
+  const context = { state: {}, args, cwd: directory, expanded: false, argsComplete: false, invalidate() {} };
   const themed = (prefix) => ({
     fg: (role, text) => `<${prefix}:${role}>${text}</${prefix}:${role}>`,
     bold: (text) => text,
   });
-  for (const [partial, error, role, mark] of [[true, false, "muted", "…"], [false, false, "success", "✓"], [false, true, "error", "✗"]]) {
-    Object.assign(context, { isPartial: partial, isError: error });
+  for (const [partial, error, started, role, mark] of [[true, false, false, "muted", "·"], [true, false, true, "accent", "○"], [false, false, true, "success", "✓"], [false, true, true, "error", "✗"]]) {
+    Object.assign(context, { isPartial: partial, isError: error, executionStarted: started });
     for (const palette of ["dark", "light"]) {
       const text = tool.renderCall(args, themed(palette), context).render(200).join("");
       assert.ok(text.includes(`<${palette}:${role}>${mark}`));
-      assert.ok(text.includes(`<${palette}:toolTitle>📖 read`));
+      assert.ok(text.includes(`<${palette}:toolTitle>read`));
       assert.ok(text.includes(`<${palette}:text>Check configuration`));
       assert.equal(text.includes("\u001b"), false);
     }
+  }
+});
+
+test("registered running rows and group headings follow live thinking colors in built-in themes", (t) => {
+  t.mock.timers.enable({ apis: ["Date", "setInterval"], now: 100000 });
+  installBashGroups();
+  try {
+    for (const palette of ["dark", "light"]) {
+      initTheme(palette, false);
+      let level = "off";
+      let currentTheme;
+      const tools = new Map();
+      compactTools({ registerTool: (tool) => tools.set(tool.name, tool), on() {}, getThinkingLevel: () => level });
+      const registered = tools.get("bash");
+      const tool = { ...registered, renderCall(args, theme, context) {
+        currentTheme = theme;
+        return registered.renderCall(args, theme, context);
+      } };
+      const make = (id) => new ToolExecutionComponent("bash", id, { command: "true", reasoning: id }, {}, tool, { requestRender() {} }, directory);
+      const first = make("first");
+      const second = make("second");
+      const chat = new Container();
+      chat.children = [first, second];
+      const raw = () => chat.render(200).filter((line) => stripVTControlCharacters(line).trim());
+      try {
+        assert.ok(raw().every((line) => line.includes(currentTheme.fg("muted", "·"))));
+        first.markExecutionStarted();
+        for (level of ["off", "minimal", "low", "medium", "high", "xhigh", "max"]) {
+          t.mock.timers.tick(500);
+          const lines = raw();
+          const mark = stripVTControlCharacters(lines[0]).trimStart()[0];
+          const expected = currentTheme.getThinkingBorderColor(level)(mark);
+          assert.ok(lines[0].includes(expected), `${palette}/${level}: group`);
+          assert.ok(lines[1].includes(expected), `${palette}/${level}: tool`);
+          assert.ok(lines[2].includes(currentTheme.fg("muted", "·")));
+        }
+        result(first, { content: [], isError: true });
+        second.markExecutionStarted();
+        const running = raw();
+        assert.ok(running[0].includes(currentTheme.fg("error", "○")));
+        assert.ok(running[1].includes(currentTheme.fg("error", "✗")));
+        assert.ok(running[2].includes(currentTheme.getThinkingBorderColor("max")("○")));
+        result(second, { content: [] });
+        const completed = raw();
+        assert.ok(completed[0].includes(currentTheme.fg("error", "✗")));
+        assert.ok(completed[2].includes(currentTheme.fg("success", "✓")));
+      } finally {
+        result(first, { content: [] });
+        result(second, { content: [] });
+      }
+    }
+  } finally {
+    initTheme("dark", false);
   }
 });
 
@@ -70,7 +124,7 @@ test("Bash stays on one bounded row and retains native command, output, and fail
     };
     const view = component(tool, args);
     try {
-      assert.match(rows(view).join(""), /^… ⚡ bash Check/);
+      assert.match(rows(view).join(""), /^○ bash Check/);
       for (const width of [1, 8, 24, 80]) {
         const rendered = rows(view, width);
         assert.equal(rendered.length, 1);
@@ -84,7 +138,7 @@ test("Bash stays on one bounded row and retains native command, output, and fail
       assert.equal(completed.isError === true, failure);
       result(view, completed);
       assert.equal(rows(view).length, 1);
-      assert.ok(rows(view)[0].startsWith(failure ? "✗ ⚡ bash" : "✓ ⚡ bash"));
+      assert.ok(rows(view)[0].startsWith(failure ? "✗ bash" : "✓ bash"));
       assert.equal(rows(view)[0].includes("printf"), false);
       for (let index = 0; index < 2; index++) {
         view.setExpanded(true);
@@ -130,7 +184,7 @@ test("registration keeps user shell preferences and ignores untrusted project ex
   try {
     process.env.PI_CODING_AGENT_DIR = agentDir;
     process.chdir(project);
-    compactTools({ registerTool: (tool) => tools.set(tool.name, tool) });
+    compactTools({ registerTool: (tool) => tools.set(tool.name, tool), on() {} });
   } finally {
     process.chdir(previousCwd);
     if (previousAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
@@ -161,7 +215,7 @@ test("read counts reserve space beside long goals and distinguish images and err
   }
 });
 
-test("Bash reuses Pi's live clock before stdout, stops it on completion, and honors recorded durations", (t) => {
+test("Bash shows elapsed time before stdout, stops refreshing on completion, and honors recorded durations", (t) => {
   t.mock.timers.enable({ apis: ["Date", "setInterval"], now: 100000 });
   const tool = compactTool(createBashToolDefinition(directory));
   let redraws = 0;
@@ -266,4 +320,60 @@ test("visible text and non-Bash tools end a Bash group, while a single command s
   assert.equal(rows(chat).some((line) => line.includes("shell commands")), false);
   chat.children = [commands[0], commands[1], read, commands[2], commands[3]];
   assert.equal(rows(chat).filter((line) => line.includes("Ran 2 shell commands")).length, 2);
+});
+
+test("native pulse waits for execution, advances in one column, and stops on success or failure", (t) => {
+  t.mock.timers.enable({ apis: ["Date", "setInterval"], now: 100000 });
+  for (const failure of [false, true]) {
+    let redraws = 0;
+    const tool = compactTool(createReadToolDefinition(directory));
+    const view = new ToolExecutionComponent("read", "pulse", { path: "fixture.txt", reasoning: "检查配置" }, {}, tool, { requestRender() { redraws++; } }, directory);
+    try {
+      assert.match(rows(view)[0], /^· read 检查配置$/);
+      t.mock.timers.tick(1000);
+      assert.equal(redraws, 0);
+      view.markExecutionStarted();
+      for (const mark of ["●", "○", "●", "○"]) {
+        t.mock.timers.tick(500);
+        assert.ok(rows(view)[0].startsWith(`${mark} read `));
+        assert.equal(visibleWidth(mark), 1);
+      }
+      assert.ok(redraws >= 5);
+      result(view, { content: [{ type: "text", text: "fixture" }], isError: failure });
+      assert.ok(rows(view)[0].startsWith(failure ? "✗ read " : "✓ read "));
+      const stopped = redraws;
+      t.mock.timers.tick(2000);
+      assert.equal(redraws, stopped);
+    } finally {
+      result(view, { content: [], isError: true });
+    }
+  }
+});
+
+test("session shutdown idempotently stops native pulses and group headings reuse active frames", (t) => {
+  t.mock.timers.enable({ apis: ["Date", "setInterval"], now: 100000 });
+  const handlers = new Map();
+  compactTools({ registerTool() {}, on: (name, handler) => handlers.set(name, handler) });
+  let redraws = 0;
+  const tool = compactTool(createBashToolDefinition(directory));
+  const make = (id) => new ToolExecutionComponent("bash", id, { command: "true", reasoning: id }, {}, tool, { requestRender() { redraws++; } }, directory);
+  const first = make("running");
+  const queued = make("queued");
+  const chat = new Container();
+  chat.children = [first, queued];
+  try {
+    first.markExecutionStarted();
+    t.mock.timers.tick(500);
+    assert.ok(rows(chat)[0].startsWith("● Running 2 shell commands"));
+    assert.ok(rows(chat)[1].trimStart().startsWith("● bash running"));
+    assert.ok(rows(chat)[2].trimStart().startsWith("· bash queued"));
+    const before = redraws;
+    handlers.get("session_shutdown")();
+    handlers.get("session_shutdown")();
+    t.mock.timers.tick(2000);
+    assert.equal(redraws, before);
+  } finally {
+    result(first, { content: [] });
+    result(queued, { content: [] });
+  }
 });

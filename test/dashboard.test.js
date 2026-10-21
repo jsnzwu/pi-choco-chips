@@ -14,6 +14,7 @@ import piChocoDashboard, {
   compactBranchForWidth,
   compactPathForWidth,
   footerContextParts,
+  footerExtensionStatuses,
   footerGlyphs,
   gitFooterText,
   styledGitText,
@@ -103,7 +104,7 @@ test("dashboard source keeps compact footer hierarchy and field-aware statuses",
   assert.match(source, /\)}K`/);
   assert.doesNotMatch(source, /"work "/);
   assert.match(source, /status\.split\(\/\\r\?\\n\//);
-  assert.match(source, /const extensionStatuses = footerData\.getExtensionStatuses\(\)/);
+  assert.match(source, /const extensionStatuses = footerExtensionStatuses\(footerData\.getExtensionStatuses\(\)\)/);
   assert.match(source, /extensionStatusGroups\(extensionStatuses, inlineMcp \? "mcp" : void 0\)/);
   assert.match(source, /metadata\.push\(\.\.\.line4\)/);
   assert.match(source, /if \(extensionGroups\.length\) rows\.push\(extensionGroups\.flat\(\)\)/);
@@ -249,6 +250,26 @@ test("footer renders external statuses but reserves PCC fast status for the mode
   assert.deepEqual(extensionStatusGroups(new Map([...statuses, ["mcp", "MCP 1/2"]]), "mcp"), [
     ["ready"], ["idle"], ["working"],
   ]);
+});
+
+test("footer shows only MiAW MCP status while its activity status is visible", () => {
+  const genericMcp = "🔌 MCP: 1 server enabled";
+  const miaw = "MiAW · 0 AGT · MCP shell ∅ not detected";
+  const statuses = new Map([["mcp", genericMcp], ["other-extension", "working"]]);
+  assert.equal(footerExtensionStatuses(statuses).get("mcp"), genericMcp);
+
+  statuses.set("aw-task", miaw);
+  const visible = footerExtensionStatuses(statuses);
+  assert.equal(visible.has("mcp"), false);
+  for (const inlineMcp of [true, false]) {
+    assert.deepEqual(extensionStatusGroups(visible, inlineMcp ? "mcp" : undefined), [
+      ["working"], [miaw],
+    ]);
+  }
+  assert.equal(statuses.get("mcp"), genericMcp);
+
+  statuses.delete("aw-task");
+  assert.equal(footerExtensionStatuses(statuses).get("mcp"), genericMcp);
 });
 
 test("dashboard uses Pi semantic colors for git and thinking-level activity", () => {
