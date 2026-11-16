@@ -93,14 +93,13 @@ The effective trigger is `min(contextWindow × triggerPercent / 100, maxTokens)`
 
 ```toml
 [imagegen]
-provider = "proxy"
-model = "gpt-image-2.6"
+model = "gpt-image-2"
 ```
 
 | Key | Default | Meaning |
 | --- | --- | --- |
 | `enabled` | `true` | Register the tool at all. |
-| `provider` | unset | Provider from `models.json`, for example `proxy`. Unset means the provider of the session's current model. |
+| `provider` | session provider | Provider from `models.json`, for example `my-gateway`. Unset means the provider of the session's current model. |
 | `model` | `gpt-image-2` | Model ID sent to the provider. |
 | `size` | unset | Optional `size` value such as `1024x1024`; omitted when empty. |
 | `quality` | unset | Optional `quality` value: `low`, `medium`, `high`, or `auto`. |

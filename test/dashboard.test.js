@@ -186,9 +186,9 @@ test("footer progressively hides numeric detail without clipping values", () => 
 test("footer abbreviates path segments from the left, preserving the final directory", () => {
   const cwd = "/home/user/workspace/projects/demo-app";
   assert.equal(compactPathForWidth(cwd, 80), cwd);
-  assert.equal(compactPathForWidth(cwd, 80, true), "/m/c/U/d/D/w/projects/demo-app");
-  assert.equal(compactPathForWidth(cwd, 44), "/m/c/U/d/D/work-src/projects/demo-app");
-  assert.equal(compactPathForWidth(cwd, 30), "/m/c/U/d/D/w/projects/demo-app");
+  assert.equal(compactPathForWidth(cwd, 80, true), "/h/u/w/projects/demo-app");
+  assert.equal(compactPathForWidth(cwd, 44), cwd);
+  assert.equal(compactPathForWidth(cwd, 30), "/h/u/w/projects/demo-app");
   assert.equal(compactPathForWidth("/home/demo/.config/project", 80, true), "/h/d/.config/project");
   assert.equal(compactPathForWidth("C:\\Users\\demo\\project", 80, true), "C:\\U\\demo\\project");
   for (let width = 0; width < 80; width++) {
@@ -253,18 +253,18 @@ test("footer renders external statuses but reserves PCC fast status for the mode
   ]);
 });
 
-test("footer shows only Task tracker MCP status while its activity status is visible", () => {
+test("footer shows only task MCP status while its activity status is visible", () => {
   const genericMcp = "🔌 MCP: 1 server enabled";
-  const app = "Task tracker · 0 agents · MCP shell ∅ not detected";
+  const taskStatus = "Task tracker · 0 agents · MCP shell ∅ not detected";
   const statuses = new Map([["mcp", genericMcp], ["other-extension", "working"]]);
   assert.equal(footerExtensionStatuses(statuses).get("mcp"), genericMcp);
 
-  statuses.set("aw-task", app);
+  statuses.set("aw-task", taskStatus);
   const visible = footerExtensionStatuses(statuses);
   assert.equal(visible.has("mcp"), false);
   for (const inlineMcp of [true, false]) {
     assert.deepEqual(extensionStatusGroups(visible, inlineMcp ? "mcp" : undefined), [
-      ["working"], [app],
+      ["working"], [taskStatus],
     ]);
   }
   assert.equal(statuses.get("mcp"), genericMcp);
