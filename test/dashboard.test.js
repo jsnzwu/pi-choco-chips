@@ -54,6 +54,7 @@ test("package loads the shortcut, dashboard, compact tools, and theme resources"
     "./extensions/index.ts",
     "./extensions/dashboard.ts",
     "./extensions/compact-tools.ts",
+    "./extensions/imagegen.ts",
   ]);
   assert.deepEqual(packageJson.pi.themes, ["./themes/adam-dark.json"]);
   assert.equal(packageJson.files.includes("themes"), true);

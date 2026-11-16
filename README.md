@@ -16,6 +16,7 @@ Post-start enhancements for [pi](https://pi.dev), packaged as ordinary Pi extens
 - Skill completion after `/skill:` or `$` anywhere in the current prompt.
 - Consistent composer controls: Enter submits or steers an active turn, Alt+Enter queues a follow-up, and Shift+Enter inserts a newline. Ctrl+J remains the terminal-safe newline fallback.
 - `/choco` — open a TUI settings page for all shortcut enhancements; command-line status and toggles remain available.
+- `image_generate` — generate an image through the provider already configured in Pi (registry image model, or its OpenAI-compatible `POST /v1/images/generations` route), save it under `imagegen.outputDir`, and attach it so it renders in the transcript.
 
 The dashboard, shortcut extension, compact tool display, and `adam-dark` theme are loaded from this package as one post-start enhancement layer. Select `adam-dark` through `/settings` or set `"theme": "adam-dark"` in Pi settings.
 
@@ -85,6 +86,30 @@ maxTokens = 300000
 | `maxTokens` | `300000` | Absolute token ceiling on that percentage. Must be positive. |
 
 The effective trigger is `min(contextWindow × triggerPercent / 100, maxTokens)`, so the ceiling only binds on windows above `maxTokens / (triggerPercent / 100)` — about 375K at the defaults. A 872K window compacts at 300K, while a 372K window still compacts at 297.6K on the percentage alone. Either key can be set on its own; the other keeps its default. An out-of-range value falls back to the default for that key, and the session warns once instead of silently disabling early compaction. `/choco` reports the resolved pair as `compact-at=<percent>%/<maxTokens>`. Settings are read at extension registration, so restart Pi after changing them.
+
+### Image generation
+
+`image_generate` resolves its connection from Pi instead of storing credentials in this package. Set `provider` and `model`; the base URL and API key come from that provider in `models.json` at request time.
+
+```toml
+[imagegen]
+provider = "proxy"
+model = "gpt-image-2.6"
+```
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `enabled` | `true` | Register the tool at all. |
+| `provider` | unset | Provider from `models.json`, for example `proxy`. Unset means the provider of the session's current model. |
+| `model` | `gpt-image-2` | Model ID sent to the provider. |
+| `size` | unset | Optional `size` value such as `1024x1024`; omitted when empty. |
+| `quality` | unset | Optional `quality` value: `low`, `medium`, `high`, or `auto`. |
+| `outputDir` | `.pi/images` | Directory for saved images, resolved against the working directory of the Pi process. |
+| `timeoutMs` | `600000` | Request timeout for generation and any image download. |
+
+Resolution follows Pi's model registry. If the provider exposes an image model with that ID, the tool calls `ctx.modelRegistry.generateImages()` and Pi handles authentication; this covers catalog image models such as OpenRouter's. Otherwise the tool reads the provider's `baseUrl`, headers, and resolved API key through the registry and posts to `${baseUrl}/images/generations`, which covers OpenAI-compatible endpoints that serve that route without a catalog image API.
+
+The tool takes `prompt`, plus optional `size`, `quality`, and `n` (1–4); `size` and `quality` apply only to the HTTP route. It decodes `b64_json` and `url` payloads, including data URLs and HTTP downloads, names files by timestamp and image type, and returns the saved paths with the upstream token usage. HTTP failures, empty payloads, and undecodable data are reported as tool errors instead of retried. Only generation is covered: `/v1/images/edits` and reference-image workflows are not part of this tool.
 ## Commands and skill references
 
 `/command` selects a Pi command. `$skill-name` selects a skill without looking like a command; `/skill:name` remains supported as the explicit form.
@@ -139,6 +164,12 @@ pi -e ./extensions/index.ts -e ./extensions/dashboard.ts -e ./extensions/compact
 ```
 
 After changing only shortcut logic, `/reload` is sufficient. After changing dashboard rendering or settings, restart Pi.
+
+To load the image tool without installing the package:
+
+```bash
+pi -e ./extensions/imagegen.ts
+```
 
 ## Privacy
 

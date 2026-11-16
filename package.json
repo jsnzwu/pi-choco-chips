@@ -24,13 +24,15 @@
   "peerDependencies": {
     "@earendil-works/pi-ai": "*",
     "@earendil-works/pi-coding-agent": "*",
-    "@earendil-works/pi-tui": "*"
+    "@earendil-works/pi-tui": "*",
+    "typebox": "*"
   },
   "pi": {
     "extensions": [
       "./extensions/index.ts",
       "./extensions/dashboard.ts",
-      "./extensions/compact-tools.ts"
+      "./extensions/compact-tools.ts",
+      "./extensions/imagegen.ts"
     ],
     "themes": [
       "./themes/adam-dark.json"

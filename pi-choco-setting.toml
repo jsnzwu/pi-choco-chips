@@ -125,3 +125,12 @@ registerCommands = true
 registerShortcuts = false
 watchConfig = false
 reloadRequiredAfterConfigChange = true
+
+[imagegen]
+enabled = true
+provider = ""
+model = "gpt-image-2"
+size = ""
+quality = ""
+outputDir = ".pi/images"
+timeoutMs = 600000
