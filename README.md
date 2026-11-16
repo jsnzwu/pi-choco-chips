@@ -170,6 +170,19 @@ To load the image tool without installing the package:
 pi -e ./extensions/imagegen.ts
 ```
 
+### Update an installed copy
+
+`pi update git:github.com/jsnzwu/pi-choco-chips` fetches the tracked branch and resets the checkout to it, so a rewritten upstream history (squash, rebase, or force push) is not a merge conflict. Local commits left in that checkout are discarded, and the installed package moves to the published tip.
+
+A manual `git pull` in the clone under `~/.pi/agent/git/` does report diverged branches instead. Recover with:
+
+```bash
+git -C ~/.pi/agent/git/github.com/jsnzwu/pi-choco-chips fetch origin
+git -C ~/.pi/agent/git/github.com/jsnzwu/pi-choco-chips reset --hard origin/main
+```
+
+Restart Pi afterwards so extensions reload from the new files.
+
 ## Privacy
 
 Use repository-relative paths or synthetic fixtures such as `/home/demo/project` in documentation, tests, and commit messages. Do not copy personal directory trees, real task identifiers, credentials, or private service addresses into public artifacts. Review Git author and committer email settings before publishing; use a hosting provider's noreply address if you do not want to publish a personal email. Deleting sensitive text in a later commit does not remove it from Git history.
